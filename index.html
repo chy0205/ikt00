@@ -198,18 +198,11 @@
             <div id="main-content" class="hidden-custom">
                 <button id="form-back-btn" class="back-btn hidden-custom">← 返回班級選擇</button>
 
-                <!-- 下拉式選單分組 -->
+                <!-- 下拉式選單分組 (簡化為單一單位選擇) -->
                 <div class="space-y-4 mb-6" id="dropdown-controls">
                     <div>
-                        <label class="text-xs font-bold text-gray-500 uppercase ml-1 block mb-1">1. 選擇大區域</label>
-                        <select id="main-area-select" onchange="onMainAreaChange()"
-                            class="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
-                            <option value="">-- 請選擇大區域 --</option>
-                        </select>
-                    </div>
-                    <div id="sub-area-container" class="hidden-custom">
-                        <label class="text-xs font-bold text-gray-500 uppercase ml-1 block mb-1">2. 選擇細分單位</label>
-                        <select id="sub-area-select" onchange="onSubAreaChange()"
+                        <label class="text-xs font-bold text-gray-500 uppercase ml-1 block mb-1">請選擇單位</label>
+                        <select id="unit-select" onchange="onUnitChange()"
                             class="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
                             <option value="">-- 請選擇單位 --</option>
                         </select>
@@ -332,14 +325,6 @@
         let selectedClass = "";
         let currentTargetItem = null;
         let currentTargetBtn = null;
-        const AREA_GROUPS = [
-            { name: "中和區~中和060區", keywords: ["中和00", "中和01", "中和大02", "中和03", "中和04", "中和05", "中和060"] },
-            { name: "中和061區~中和開荒區", keywords: ["中和06", "中和07", "中和08", "中和09", "中和1", "開荒"] },
-            { name: "精明", keywords: ["精明"] },
-            { name: "馬來", keywords: ["馬來", "Malaysia"] },
-            { name: "印尼", keywords: ["印尼", "Indonesia"] },
-            { name: "越南 澳洲 孟加拉 加拿大 西班牙", keywords: ["越南", "澳洲", "孟加拉", "加拿大", "西班牙"] }
-        ];
 
         // --- [ QR Code 邏輯變數 ] ---
         let allConfig = { locations: [], classes: [] };
@@ -441,40 +426,19 @@
             }
         }
 
-        function getParentGroupName(rawArea) {
-            if (!rawArea) return "其他";
-            const areaStr = String(rawArea);
-            if (areaStr.includes("中和")) {
-                const numMatch = areaStr.match(/\d+/);
-                if (numMatch) {
-                    const num = parseInt(numMatch[0]);
-                    if (num >= 1 && num <= 60) return "中和區~中和060區";
-                    if (num >= 61) return "中和061區~中和開荒區";
-                }
-                if (areaStr.includes("開荒")) return "中和061區~中和開荒區";
-                return "中和區~中和060區";
-            }
-            for (const group of AREA_GROUPS) {
-                if (group.keywords.some(k => areaStr.includes(k))) return group.name;
-            }
-            return "其他";
-        }
-
         function initDropdowns() {
-            const mainSelect = document.getElementById('main-area-select');
-            mainSelect.innerHTML = '<option value="">-- 請選擇大區域 --</option>';
+            const unitSelect = document.getElementById('unit-select');
+            unitSelect.innerHTML = '<option value="">-- 請選擇單位 --</option>';
 
-            const displayGroups = AREA_GROUPS.map(g => g.name);
-            if (allData.some(item => getParentGroupName(item.area) === "其他")) displayGroups.push("其他");
+            // 取得所有唯一的單位名稱並排序
+            const units = [...new Set(allData.map(item => item.area || "未分類"))].sort();
 
-            displayGroups.forEach(groupName => {
-                const count = allData.filter(item => getParentGroupName(item.area) === groupName).length;
-                if (count > 0) {
-                    const opt = document.createElement('option');
-                    opt.value = groupName;
-                    opt.innerText = `${groupName} (${count}人)`;
-                    mainSelect.appendChild(opt);
-                }
+            units.forEach(uName => {
+                const count = allData.filter(item => item.area === uName).length;
+                const opt = document.createElement('option');
+                opt.value = uName;
+                opt.innerText = `${uName} (${count}人)`;
+                unitSelect.appendChild(opt);
             });
 
             document.getElementById('dropdown-controls').classList.remove('hidden-custom');
@@ -484,49 +448,20 @@
                 document.getElementById('class-select-grid').classList.remove('hidden-custom');
                 document.getElementById('form-title').innerText = "🎓 崇正點名系統";
                 document.getElementById('name-list').classList.add('hidden-custom');
-                document.getElementById('sub-area-container').classList.add('hidden-custom');
                 allData = [];
             };
         }
 
-        function onMainAreaChange() {
-            const mainArea = document.getElementById('main-area-select').value;
-            const subContainer = document.getElementById('sub-area-container');
-            const subSelect = document.getElementById('sub-area-select');
+        function onUnitChange() {
+            const unitName = document.getElementById('unit-select').value;
             const nameList = document.getElementById('name-list');
 
-            nameList.classList.add('hidden-custom');
-
-            if (!mainArea) {
-                subContainer.classList.add('hidden-custom');
-                return;
-            }
-
-            const membersInParent = allData.filter(item => getParentGroupName(item.area) === mainArea);
-            const subAreas = [...new Set(membersInParent.map(item => item.area))].sort();
-
-            subSelect.innerHTML = '<option value="">-- 請選擇單位 --</option>';
-            subAreas.forEach(subName => {
-                const count = membersInParent.filter(item => item.area === subName).length;
-                const opt = document.createElement('option');
-                opt.value = subName;
-                opt.innerText = `${subName || '未分類'} (${count}人)`;
-                subSelect.appendChild(opt);
-            });
-
-            subContainer.classList.remove('hidden-custom');
-        }
-
-        function onSubAreaChange() {
-            const subArea = document.getElementById('sub-area-select').value;
-            const nameList = document.getElementById('name-list');
-
-            if (!subArea) {
+            if (!unitName) {
                 nameList.classList.add('hidden-custom');
                 return;
             }
 
-            const filtered = allData.filter(item => item.area === subArea);
+            const filtered = allData.filter(item => item.area === unitName);
             renderList(filtered);
             nameList.classList.remove('hidden-custom');
         }
