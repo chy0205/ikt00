@@ -133,21 +133,54 @@
             display: none !important;
         }
 
-        /* QR Code 掃描器樣式 */
+        /* QR Code 全螢幕樣式 */
+        .qr-fullscreen {
+            position: fixed;
+            inset: 0;
+            background: black;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #video-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .floating-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 1010;
+            pointer-events: none;
+        }
+
+        .floating-controls>* {
+            pointer-events: auto;
+        }
+
+        .floating-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1020;
+            width: 85%;
+            max-width: 320px;
+            pointer-events: none;
+        }
+
+        .floating-status>* {
+            pointer-events: auto;
+        }
+
         #reader {
             border: none !important;
             border-radius: 2rem;
             overflow: hidden;
-        }
-
-        #reader__dashboard_section_csr button {
-            background-color: #3b82f6 !important;
-            color: white !important;
-            padding: 0.6rem 1.2rem !important;
-            border-radius: 0.75rem !important;
-            border: none !important;
-            font-size: 14px;
-            font-weight: 700;
         }
 
         .admin-active {
@@ -350,10 +383,11 @@
                 qrView.classList.add('hidden-custom');
                 navForm.classList.add('active');
                 navQR.classList.remove('active');
-                if (html5QrcodeScanner) {
-                    html5QrcodeScanner.clear().catch(err => console.error("Scanner clear error", err));
-                    html5QrcodeScanner = null;
+                if (activeStream) {
+                    activeStream.getTracks().forEach(track => track.stop());
+                    activeStream = null;
                 }
+                codeReader.reset();
             } else {
                 // QR Code 簽到前先檢查密碼
                 const pass = prompt("請輸入訪問密碼以啟用 QR Code 簽到：");
