@@ -1,0 +1,183 @@
+/**
+ * 統合版後端：支援使用者 QR Code 簽到與管理者手動點名系統
+ * * 【試算表分頁配置要求】
+ * 1. 「系統設定」：A:緯度, B:經度, C:距離(m), D:地點名稱, E:管理員密碼
+ * 2. 「班級設定」：A:班級名稱 (若無此分頁，系統會自動掃描「名冊_」開頭的分頁)
+ * 3. 「簽到紀錄」：系統寫入用
+ * 欄位順序：時間, ID, 姓名, 性別, 座號, 區域, 地點, 驗證方式, 請假原因, 班名
+ * 4. 「名冊_班名」：格式 A:memberId, B:性別, C:座號, D:姓名, E:單位/區域
+ */
+
+const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+
+function doGet(e) {
+  const action = e.parameter.action;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1. 初始化讀取：回傳地點清單與班級清單
+  if (!action || action === 'init') {
+    const locSheet = ss.getSheetByName("系統設定");
+    const classSheet = ss.getSheetByName("班級設定");
+    const locations = [];
+    let classes = [];
+
+    // 讀取地點設定
+    if (locSheet) {
+      const locRows = locSheet.getDataRange().getValues();
+      for (let i = 1; i < locRows.length; i++) {
+        if (locRows[i][3]) { 
+          locations.push({
+            lat: locRows[i][0],
+            lng: locRows[i][1],
+            limit: locRows[i][2],
+            name: locRows[i][3],
+            password: String(locRows[i][4])
+          });
+        }
+      }
+    }
+
+    // 讀取班級設定 (優先從班級設定分頁讀取，若無則掃描分頁名稱)
+    if (classSheet) {
+      const classRows = classSheet.getDataRange().getValues();
+      for (let j = 1; j < classRows.length; j++) {
+        if (classRows[j][0]) classes.push(classRows[j][0]);
+      }
+    }
+    
+    if (classes.length === 0) {
+      const sheets = ss.getSheets();
+      classes = sheets
+        .map(s => s.getName())
+        .filter(name => name.indexOf("名冊_") === 0)
+        .map(name => name.replace("名冊_", ""));
+    }
+
+    return createJsonResponse("success", "資料載入成功", {
+      locations: locations,
+      classes: classes
+    });
+  }
+
+  // 2. 取得特定班級名冊 (管理者點名用)
+  if (action === 'getMemberList') {
+    const className = e.parameter.className;
+    const sheetName = "名冊_" + className;
+    const sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) return createJsonResponse("error", "找不到工作表: " + sheetName);
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return createJsonResponse("success", "名冊無資料", []);
+    
+    // 跳過標題列，讀取 A 到 E 欄
+    const list = data.slice(1).map(row => ({
+      memberId: String(row[0]),
+      gender: row[1],
+      seatNum: row[2],
+      name: row[3],
+      area: row[4]
+    })).filter(item => item.name !== "");
+    
+    return createJsonResponse("success", "OK", list);
+  }
+
+  return createJsonResponse("error", "未知的指令 (Invalid Action)");
+}
+
+function doPost(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // 依照要求調整欄位順序：Timestamp, memberId, Name, 性別, 座號, 區域, 地點, 驗證方式, 請假原因, 班名
+  const logSheet = getOrCreateSheet(ss, "簽到紀錄", ["時間", "ID", "姓名", "性別", "座號", "區域", "地點", "驗證方式", "請假原因", "班名"]);
+
+  try {
+    const postData = JSON.parse(e.postData.contents);
+    const action = postData.action;
+
+    // A. 使用者掃碼簽到邏輯
+    if (action === 'signin') {
+      const targetId = String(postData.memberId).trim();
+      const className = postData.className;
+      const targetSheetName = "名冊_" + className;
+      const memberSheet = ss.getSheetByName(targetSheetName);
+
+      if (!memberSheet) return createJsonResponse("error", "找不到名冊分頁：" + targetSheetName);
+
+      const memberData = memberSheet.getDataRange().getValues();
+      let foundMember = null;
+
+      for (let i = 1; i < memberData.length; i++) {
+        if (String(memberData[i][0]).trim() === targetId) {
+          foundMember = {
+            gender: memberData[i][1],
+            seatNum: memberData[i][2],
+            name: memberData[i][3],
+            area: memberData[i][4]
+          };
+          break;
+        }
+      }
+
+      if (foundMember) {
+        logSheet.appendRow([
+          new Date(),           // 時間
+          targetId,             // ID
+          foundMember.name,     // 姓名
+          foundMember.gender,   // 性別
+          foundMember.seatNum,  // 座號
+          foundMember.area,     // 區域
+          postData.locationName,// 地點
+          postData.status || "定位驗證成功", // 驗證方式
+          "",                   // 請假原因 (自動簽到通常為空)
+          className             // 班名
+        ]);
+        
+        return createJsonResponse("success", "簽到成功", foundMember);
+      } else {
+        return createJsonResponse("error", "在「" + className + "」名冊中查無此 ID");
+      }
+    }
+
+    // B. 管理者手動點名邏輯
+    if (action === 'updateStatus') {
+      logSheet.appendRow([
+        new Date(),             // 時間
+        postData.memberId,      // ID
+        postData.name,          // 姓名
+        postData.gender,        // 性別
+        postData.seatNum,       // 座號
+        postData.area,          // 區域
+        "管理者手動",           // 地點
+        postData.status,        // 驗證方式 (出席/缺席/請假等)
+        postData.reason || "",  // 請假原因
+        postData.className      // 班名
+      ]);
+      return createJsonResponse("success", "✅ " + postData.name + " 紀錄成功");
+    }
+
+    return createJsonResponse("error", "未知的 Post 指令");
+  } catch (err) {
+    return createJsonResponse("error", "伺服器異常：" + err.toString());
+  }
+}
+
+/**
+ * 輔助函式：確保工作表存在，若不存在則建立並寫入標題
+ */
+function getOrCreateSheet(ss, name, headers) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+/**
+ * 輔助函式：標準化回傳 JSON 格式
+ */
+function createJsonResponse(status, message, data = null) {
+  const output = { status: status, message: message, data: data };
+  return ContentService.createTextOutput(JSON.stringify(output))
+    .setMimeType(ContentService.MimeType.JSON);
+}

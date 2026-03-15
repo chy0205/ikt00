@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>崇正班期點名整合系統</title>
+    <!-- 引入支援庫 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        /* 繼承原有的手動表單樣式 */
+        body {
+            font-family: -apple-system, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        .container-custom {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .grid-custom {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .area-btn {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 10px;
+            font-size: 1.05em;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .area-btn:hover {
+            background-color: #1976D2;
+            transform: translateY(-2px);
+        }
+
+        .area-btn::after {
+            content: '→';
+            opacity: 0.7;
+        }
+
+        .class-btn {
+            background-color: #4caf50;
+            margin-bottom: 10px;
+        }
+
+        .class-btn:hover {
+            background-color: #388e3c;
+        }
+
+        .sub-area-btn {
+            background-color: #607D8B;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+        }
+
+        .info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .name-text {
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+
+        .sub-text {
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-custom {
+            border: none;
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .btn-present {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        .btn-leave {
+            background-color: #ff9800;
+            color: white;
+        }
+
+        .back-btn {
+            background-color: #757575;
+            color: white;
+            margin-bottom: 15px;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .hidden-custom {
+            display: none !important;
+        }
+
+        /* QR Code 掃描器樣式 */
+        #reader {
+            border: none !important;
+            border-radius: 2rem;
+            overflow: hidden;
+        }
+
+        #reader__dashboard_section_csr button {
+            background-color: #3b82f6 !important;
+            color: white !important;
+            padding: 0.6rem 1.2rem !important;
+            border-radius: 0.75rem !important;
+            border: none !important;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .admin-active {
+            color: #f59e0b !important;
+            background-color: #fef3c7 !important;
+        }
+
+        /* 切換導覽列 */
+        .nav-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .nav-btn {
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: 2px solid #2196F3;
+            background: white;
+            color: #2196F3;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .nav-btn.active {
+            background: #2196F3;
+            color: white;
+        }
+    </style>
+</head>
+
+<body class="pb-10">
+    <div class="max-w-md mx-auto px-4 py-8">
+        <!-- 頂部切換按鈕 -->
+        <div class="nav-bar">
+            <button id="nav-form" class="nav-btn active" onclick="switchView('form')">手動點名</button>
+            <button id="nav-qrcode" class="nav-btn" onclick="switchView('qrcode')">QR Code 簽到</button>
+        </div>
+
+        <!-- =========== [手動點名頁面] =========== -->
+        <div id="view-form" class="container-custom">
+            <h3 id="form-title" class="text-center text-xl font-bold mb-5">🎓 崇正點名系統</h3>
+
+            <div id="class-select-grid" class="grid-custom">
+                <p id="class-hint" style="text-align:center; color:#666;">正在讀取班級清單...</p>
+            </div>
+
+            <div id="main-content" class="hidden-custom">
+                <button id="form-back-btn" class="back-btn hidden-custom">← 返回</button>
+                <div id="loader" class="hidden-custom text-center py-5">載入中...</div>
+                <div id="area-grid" class="grid-custom hidden-custom"></div>
+                <div id="sub-area-grid" class="grid-custom hidden-custom"></div>
+                <div id="name-list" class="hidden-custom"></div>
+            </div>
+        </div>
+
+        <!-- =========== [QR Code 簽到頁面] =========== -->
+        <div id="view-qrcode" class="hidden-custom">
+            <div class="bg-white rounded-[2rem] shadow-lg p-6 mb-6 border-2 border-white">
+                <div class="flex justify-between items-center mb-4">
+                    <h1 class="text-2xl font-black text-blue-900 tracking-tighter">班期簽到管理</h1>
+                    <button onclick="unlockAdmin()" id="admin-btn"
+                        class="p-2 bg-slate-100 rounded-xl text-slate-400 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">1. 目前地點
+                            (定位與密碼)</label>
+                        <select id="location-selector" onchange="changeLocation()"
+                            class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
+                            <option value="">載入中...</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label
+                            class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest text-green-600">2.
+                            選擇簽到班級 (比對名冊)</label>
+                        <select id="qr-class-selector" onchange="changeQRClass()"
+                            class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-green-500 appearance-none shadow-inner">
+                            <option value="">載入中...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="reader-container"
+                class="relative bg-white rounded-[2rem] shadow-2xl p-2 mb-6 ring-4 ring-white transition-all">
+                <div id="reader" class="w-full"></div>
+                <div id="admin-badge"
+                    class="hidden absolute top-4 right-4 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-lg z-10 shadow-lg animate-bounce">
+                    管理員：免定位模式</div>
+            </div>
+
+            <div id="status-card"
+                class="hidden animate-in zoom-in duration-200 mb-6 border-b-8 rounded-[2.5rem] overflow-hidden shadow-2xl transition-all">
+                <div id="card-loading"
+                    class="hidden bg-blue-600 text-white p-10 flex flex-col items-center gap-3 text-center">
+                    <div class="animate-spin h-10 w-10 border-4 border-white/30 border-t-white rounded-full"></div>
+                    <p class="text-xl font-black tracking-widest uppercase">驗證中...</p>
+                </div>
+                <div id="card-success"
+                    class="hidden bg-green-600 text-white p-10 flex flex-col items-center gap-4 text-center">
+                    <span id="display-seat"
+                        class="bg-white text-green-600 font-black text-xl px-4 py-1 rounded-xl shadow-lg">座號 --</span>
+                    <div>
+                        <p id="display-prayer" class="text-6xl font-black mb-1 leading-none text-white">姓名</p>
+                        <p id="display-temple" class="text-lg opacity-90 font-bold text-white">單位</p>
+                    </div>
+                </div>
+                <div id="card-error"
+                    class="hidden bg-red-600 text-white p-10 flex flex-col items-center gap-3 text-center">
+                    <p id="error-message" class="text-2xl font-black leading-tight">驗證失敗</p>
+                    <p id="scanned-id-hint" class="text-xs font-mono opacity-70 break-all">ID: --</p>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-2xl p-4 shadow-inner">
+                <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 text-white">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">系統日誌</span>
+                    <button onclick="clearLog()" class="text-[10px] text-slate-500 underline font-bold">清除</button>
+                </div>
+                <div id="debug-log" class="text-blue-200 h-24 overflow-y-auto font-mono text-xs"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 請假 Modal (手動點名用) -->
+    <div id="leave-modal"
+        class="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] backdrop-blur-sm hidden-custom">
+        <div class="bg-white p-6 rounded-2xl w-[85%] max-w-[320px] text-center shadow-2xl">
+            <h4 id="modal-title-name" class="font-bold text-lg mb-2">請假登記</h4>
+            <p class="text-gray-600 mb-4">請選擇原因：</p>
+            <select id="leave-reason" onchange="toggleOtherInput()"
+                class="w-full p-3 mb-4 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 outline-none">
+                <option value="病假">病假</option>
+                <option value="事假">事假</option>
+                <option value="公假">公假</option>
+                <option value="晚到">晚到</option>
+                <option value="其他">其他</option>
+            </select>
+            <input type="text" id="other-reason" class="hidden-custom w-full p-3 mb-4 rounded-lg border border-gray-300"
+                placeholder="請輸入請假原因...">
+            <div class="flex gap-3">
+                <button class="flex-1 p-3 bg-gray-100 rounded-lg font-bold" onclick="closeLeaveModal()">取消</button>
+                <button class="flex-1 p-3 bg-orange-500 text-white rounded-lg font-bold"
+                    id="confirm-leave-btn">確認提交</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 通用變數
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby2Eaaw-MCs-zfX5b5W5k_y20rfRZJVW4zMtZIqHMjNPFSkBUb9ZTrNuwSQmrG0iw2U/exec";
+
+        // --- [ 手動點名邏輯變數 ] ---
+        let allData = [];
+        let selectedClass = "";
+        let currentTargetItem = null;
+        let currentTargetBtn = null;
+        const AREA_GROUPS = [
+            { name: "中和區~中和060區", keywords: ["中和00", "中和01", "中和大02", "中和03", "中和04", "中和05", "中和060"] },
+            { name: "中和061區~中和開荒區", keywords: ["中和06", "中和07", "中和08", "中和09", "中和1", "開荒"] },
+            { name: "精明", keywords: ["精明"] },
+            { name: "馬來", keywords: ["馬來", "Malaysia"] },
+            { name: "印尼", keywords: ["印尼", "Indonesia"] },
+            { name: "越南 澳洲 孟加拉 加拿大 西班牙", keywords: ["越南", "澳洲", "孟加拉", "加拿大", "西班牙"] }
+        ];
+
+        // --- [ QR Code 邏輯變數 ] ---
+        let allConfig = { locations: [], classes: [] };
+        let currentLoc = null;
+        let qrCurrentClass = null;
+        let verifiedCoords = null;
+        let isAdminMode = false;
+        let isProcessingScanner = false;
+        let lastId = "";
+        let lastTime = 0;
+        let html5QrcodeScanner = null;
+
+        // --- [ 頁面切換控制 ] ---
+        function switchView(view) {
+            const formView = document.getElementById('view-form');
+            const qrView = document.getElementById('view-qrcode');
+            const navForm = document.getElementById('nav-form');
+            const navQR = document.getElementById('nav-qrcode');
+
+            if (view === 'form') {
+                formView.classList.remove('hidden-custom');
+                qrView.classList.add('hidden-custom');
+                navForm.classList.add('active');
+                navQR.classList.remove('active');
+                // 暫停掃描以節省電力/資源
+                if (html5QrcodeScanner) {
+                    html5QrcodeScanner.clear().catch(err => console.error("Scanner clear error", err));
+                    html5QrcodeScanner = null;
+                }
+            } else {
+                formView.classList.add('hidden-custom');
+                qrView.classList.remove('hidden-custom');
+                navForm.classList.remove('active');
+                navQR.classList.add('active');
+                // 啟動掃描器
+                initScanner();
+            }
+        }
+
+        // --- [ 初始化 ] ---
+        window.onload = async function () {
+            // 首先加載手動點名的班級清單
+            try {
+                const res = await fetch(`${GAS_URL}?action=init`);
+                const result = await res.json();
+
+                if (result.status === "success") {
+                    allConfig = result.data; // 共用配置
+
+                    // 渲染手動點名班級
+                    const grid = document.getElementById('class-select-grid');
+                    const hint = document.getElementById('class-hint');
+                    hint.innerText = "請選擇點名班級：";
+                    allConfig.classes.forEach(cls => {
+                        const btn = document.createElement('button');
+                        btn.className = 'area-btn class-btn';
+                        btn.innerHTML = `<span>${cls}</span>`;
+                        btn.onclick = () => selectClass(cls);
+                        grid.appendChild(btn);
+                    });
+
+                    // 初始化 QR Code 選單
+                    updateQRSelectors();
+                } else {
+                    document.getElementById('class-hint').innerText = "載入失敗：" + (result.message || "未知原因");
+                }
+            } catch (e) {
+                document.getElementById('class-hint').innerText = "無法連線至後端。";
+            }
+        };
+
+        // --- [ 手動點名功能 ] ---
+        async function selectClass(className) {
+            selectedClass = className;
+            document.getElementById('class-select-grid').classList.add('hidden-custom');
+            document.getElementById('main-content').classList.remove('hidden-custom');
+            document.getElementById('loader').classList.remove('hidden-custom');
+            await loadFormData();
+        }
+
+        async function loadFormData() {
+            try {
+                const res = await fetch(`${GAS_URL}?action=getMemberList&className=${encodeURIComponent(selectedClass)}`);
+                const result = await res.json();
+                if (result.status === "success") {
+                    allData = result.data;
+                    document.getElementById('loader').classList.add('hidden-custom');
+                    showMainAreas();
+                } else {
+                    document.getElementById('loader').innerText = "讀取失敗：" + result.message;
+                }
+            } catch (err) {
+                document.getElementById('loader').innerText = "連線失敗。";
+            }
+        }
+
+        function getParentGroupName(rawArea) {
+            if (!rawArea) return "其他";
+            const areaStr = String(rawArea);
+            if (areaStr.includes("中和")) {
+                const numMatch = areaStr.match(/\d+/);
+                if (numMatch) {
+                    const num = parseInt(numMatch[0]);
+                    if (num >= 1 && num <= 60) return "中和區~中和060區";
+                    if (num >= 61) return "中和061區~中和開荒區";
+                }
+                if (areaStr.includes("開荒")) return "中和061區~中和開荒區";
+                return "中和區~中和060區";
+            }
+            for (const group of AREA_GROUPS) {
+                if (group.keywords.some(k => areaStr.includes(k))) return group.name;
+            }
+            return "其他";
+        }
+
+        function showMainAreas() {
+            const areaGrid = document.getElementById('area-grid');
+            const subGrid = document.getElementById('sub-area-grid');
+            const nameList = document.getElementById('name-list');
+            const backBtn = document.getElementById('form-back-btn');
+            const title = document.getElementById('form-title');
+
+            title.innerText = `📋 ${selectedClass} - 分類`;
+            areaGrid.innerHTML = '';
+
+            const displayGroups = AREA_GROUPS.map(g => g.name);
+            if (allData.some(item => getParentGroupName(item.area) === "其他")) displayGroups.push("其他");
+
+            displayGroups.forEach(groupName => {
+                const count = allData.filter(item => getParentGroupName(item.area) === groupName).length;
+                if (count > 0) {
+                    const btn = document.createElement('button');
+                    btn.className = 'area-btn';
+                    btn.innerHTML = `<span>${groupName}</span><small>(${count}人)</small>`;
+                    btn.onclick = () => showSubAreas(groupName);
+                    areaGrid.appendChild(btn);
+                }
+            });
+
+            areaGrid.classList.remove('hidden-custom');
+            subGrid.classList.add('hidden-custom');
+            nameList.classList.add('hidden-custom');
+            backBtn.classList.remove('hidden-custom');
+            backBtn.onclick = () => {
+                document.getElementById('main-content').classList.add('hidden-custom');
+                document.getElementById('class-select-grid').classList.remove('hidden-custom');
+                document.getElementById('form-title').innerText = "🎓 崇正點名系統";
+                allData = [];
+            };
+        }
+
+        function showSubAreas(parentName) {
+            const areaGrid = document.getElementById('area-grid');
+            const subGrid = document.getElementById('sub-area-grid');
+            const nameList = document.getElementById('name-list');
+            const backBtn = document.getElementById('form-back-btn');
+            const title = document.getElementById('form-title');
+
+            title.innerText = `📂 ${parentName}`;
+            subGrid.innerHTML = '';
+
+            const membersInParent = allData.filter(item => getParentGroupName(item.area) === parentName);
+            const subAreas = [...new Set(membersInParent.map(item => item.area))].sort();
+
+            subAreas.forEach(subName => {
+                const count = membersInParent.filter(item => item.area === subName).length;
+                const btn = document.createElement('button');
+                btn.className = 'area-btn sub-area-btn';
+                btn.innerHTML = `<span>${subName || "未分類"}</span><small>(${count}人)</small>`;
+                btn.onclick = () => showNamesByFinalArea(subName, parentName);
+                subGrid.appendChild(btn);
+            });
+
+            areaGrid.classList.add('hidden-custom');
+            subGrid.classList.remove('hidden-custom');
+            nameList.classList.add('hidden-custom');
+            backBtn.onclick = showMainAreas;
+        }
+
+        function showNamesByFinalArea(finalArea, parentName) {
+            const subGrid = document.getElementById('sub-area-grid');
+            const nameList = document.getElementById('name-list');
+            const backBtn = document.getElementById('form-back-btn');
+            const title = document.getElementById('form-title');
+
+            title.innerText = `📍 ${finalArea || "未分類"}`;
+            renderList(allData.filter(item => item.area === finalArea));
+            subGrid.classList.add('hidden-custom');
+            nameList.classList.remove('hidden-custom');
+            backBtn.onclick = () => showSubAreas(parentName);
+        }
+
+        function renderList(items) {
+            const nameList = document.getElementById('name-list');
+            nameList.innerHTML = '';
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'row';
+                div.innerHTML = `
+                  <div class="info">
+                    <span class="name-text">${item.name}</span>
+                    <span class="sub-text">${item.area} | 座號: ${item.seatNum}</span>
+                  </div>
+                `;
+                const btnGroup = document.createElement('div');
+                btnGroup.className = 'btn-group';
+
+                const b1 = document.createElement('button');
+                b1.className = 'btn-custom btn-present';
+                b1.innerText = '出席';
+                b1.onclick = () => submitFormData(b1, item, '出席');
+
+                const b2 = document.createElement('button');
+                b2.className = 'btn-custom btn-leave';
+                b2.innerText = '請假';
+                b2.onclick = () => openLeaveModal(b2, item);
+
+                btnGroup.appendChild(b1);
+                btnGroup.appendChild(b2);
+                div.appendChild(btnGroup);
+                nameList.appendChild(div);
+            });
+        }
+
+        async function submitFormData(btn, item, status, reason = "") {
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "...";
+            const payload = {
+                action: 'updateStatus',
+                className: selectedClass,
+                memberId: item.memberId,
+                name: item.name,
+                gender: item.gender,
+                seatNum: item.seatNum,
+                area: item.area,
+                status: status,
+                reason: reason
+            };
+            try {
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (result.status === "success") {
+                    btn.innerText = "已送出";
+                    btn.style.backgroundColor = "#999";
+                } else {
+                    alert(result.message);
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert("傳送失敗。");
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function openLeaveModal(btn, item) {
+            currentTargetItem = item;
+            currentTargetBtn = btn;
+            document.getElementById('modal-title-name').innerText = `為 ${item.name} 登記請假`;
+            document.getElementById('leave-modal').classList.remove('hidden-custom');
+            document.getElementById('confirm-leave-btn').onclick = () => {
+                const selectValue = document.getElementById('leave-reason').value;
+                const otherValue = document.getElementById('other-reason').value;
+                const finalReason = selectValue === "其他" ? otherValue : selectValue;
+                if (selectValue === "其他" && !otherValue.trim()) { alert("請輸入原因"); return; }
+                submitFormData(currentTargetBtn, currentTargetItem, '請假', finalReason);
+                closeLeaveModal();
+            };
+        }
+        function toggleOtherInput() {
+            const select = document.getElementById('leave-reason');
+            const otherInput = document.getElementById('other-reason');
+            if (select.value === "其他") { otherInput.classList.remove('hidden-custom'); otherInput.focus(); }
+            else { otherInput.classList.add('hidden-custom'); }
+        }
+        function closeLeaveModal() {
+            document.getElementById('leave-modal').classList.add('hidden-custom');
+        }
+
+        // --- [ QR Code 簽到功能 ] ---
+        function updateQRSelectors() {
+            const locSelector = document.getElementById('location-selector');
+            const classSelector = document.getElementById('qr-class-selector');
+
+            if (allConfig.locations && allConfig.locations.length > 0) {
+                locSelector.innerHTML = allConfig.locations.map((l, i) =>
+                    `<option value="${i}">${l.name || '未命名地點'}</option>`
+                ).join('');
+                changeLocation();
+            }
+            if (allConfig.classes && allConfig.classes.length > 0) {
+                classSelector.innerHTML = allConfig.classes.map((className, i) =>
+                    `<option value="${i}">${className}</option>`
+                ).join('');
+                changeQRClass();
+            }
+        }
+
+        function changeLocation() {
+            const index = document.getElementById('location-selector').value;
+            if (index !== "" && allConfig.locations[index]) {
+                currentLoc = allConfig.locations[index];
+                resetAdminStatus();
+                log(`📍 地點：${currentLoc.name}`);
+            }
+        }
+
+        function changeQRClass() {
+            const index = document.getElementById('qr-class-selector').value;
+            if (index !== "" && allConfig.classes[index]) {
+                qrCurrentClass = allConfig.classes[index];
+                log(`📑 班級：${qrCurrentClass}`);
+            }
+        }
+
+        function unlockAdmin() {
+            if (!currentLoc) { alert("請先選擇地點"); return; }
+            if (isAdminMode) { resetAdminStatus(); log("🔒 關閉免定位模式"); return; }
+            const input = prompt(`請輸入 ${currentLoc.name} 的管理員密碼：`);
+            if (input === String(currentLoc.password)) {
+                isAdminMode = true;
+                document.getElementById('admin-badge').classList.remove('hidden');
+                document.getElementById('admin-btn').classList.add('admin-active');
+                log("🔓 免定位模式開啟", "text-amber-400 font-bold");
+            } else if (input !== null) { alert("密碼錯誤"); }
+        }
+
+        function resetAdminStatus() {
+            isAdminMode = false;
+            verifiedCoords = null;
+            document.getElementById('admin-badge').classList.add('hidden');
+            document.getElementById('admin-btn').classList.remove('admin-active');
+        }
+
+        function log(msg, color = "text-blue-200") {
+            const debugLog = document.getElementById('debug-log');
+            const time = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+            const div = document.createElement('div');
+            div.className = `mb-1 ${color}`;
+            div.innerHTML = `<span class="opacity-40 text-white">[${time}]</span> ${msg}`;
+            debugLog.appendChild(div);
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        function clearLog() { document.getElementById('debug-log').innerHTML = ""; }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function initScanner() {
+            if (html5QrcodeScanner) return;
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", {
+                fps: 20, qrbox: 250,
+                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+            }, false);
+            html5QrcodeScanner.render(onScanSuccess, () => { });
+        }
+
+        async function onScanSuccess(decodedText) {
+            if (isProcessingScanner || !currentLoc || !qrCurrentClass) return;
+            let memberid = "";
+            try {
+                const qrData = JSON.parse(decodedText.trim());
+                memberid = (qrData.memberId || qrData.id || "").toString().trim();
+            } catch (e) { memberid = decodedText.trim(); }
+            if (!memberid) return;
+
+            const now = Date.now();
+            if (memberid === lastId && (now - lastTime < 3000)) return;
+            isProcessingScanner = true; lastId = memberid; lastTime = now;
+
+            const statusCard = document.getElementById('status-card');
+            statusCard.classList.remove('hidden');
+            document.getElementById('card-loading').classList.remove('hidden');
+            document.getElementById('card-success').classList.add('hidden');
+            document.getElementById('card-error').classList.add('hidden');
+
+            try {
+                if (!isAdminMode && !verifiedCoords) {
+                    log("📍 執行定位驗證...");
+                    const pos = await new Promise((res, rej) => {
+                        navigator.geolocation.getCurrentPosition(p => res(p.coords), e => rej(new Error("定位失敗：" + e.message)), { timeout: 8000 });
+                    });
+                    const dist = getDistance(pos.latitude, pos.longitude, currentLoc.lat, currentLoc.lng);
+                    if (dist > currentLoc.limit) throw new Error(`超出範圍 (${Math.round(dist)}m)`);
+                    verifiedCoords = pos;
+                    log("✅ 定位驗證通過");
+                }
+
+                log(`🚀 發送簽到：${memberid}`);
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: "signin", memberId: memberid,
+                        locationName: currentLoc.name, className: qrCurrentClass,
+                        status: isAdminMode ? "免定位模式" : "定位驗證成功"
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    document.getElementById('display-prayer').innerText = result.data.name || "未知";
+                    document.getElementById('display-seat').innerText = `座號 ${result.data.seatNum || '無'}`;
+                    document.getElementById('display-temple').innerText = result.data.area || "";
+                    document.getElementById('card-loading').classList.add('hidden');
+                    document.getElementById('card-success').classList.remove('hidden');
+                    log(`✅ ${result.data.name} 簽到成功`);
+                    setTimeout(() => { isProcessingScanner = false; statusCard.classList.add('hidden'); }, 2000);
+                } else { throw new Error(result.message); }
+            } catch (err) {
+                document.getElementById('card-loading').classList.add('hidden');
+                document.getElementById('card-error').classList.remove('hidden');
+                document.getElementById('error-message').innerText = err.message;
+                document.getElementById('scanned-id-hint').innerText = "ID: " + memberid;
+                log(`❌ 失敗: ${err.message}`, "text-red-400");
+                verifiedCoords = null;
+                setTimeout(() => { isProcessingScanner = false; statusCard.classList.add('hidden'); }, 3000);
+            }
+        }
+    </script>
+</body>
+
+</html>

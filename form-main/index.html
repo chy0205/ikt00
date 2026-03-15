@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>崇正班期點名系統</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; padding: 20px; background-color: #f5f5f5; color: #333; }
+    .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h3 { text-align: center; color: #444; margin-bottom: 20px; }
+    
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .area-btn { 
+      background-color: #2196F3; color: white; border: none; padding: 18px; 
+      border-radius: 10px; font-size: 1.05em; cursor: pointer; font-weight: bold; 
+      transition: all 0.2s; text-align: left; display: flex; justify-content: space-between; align-items: center;
+    }
+    .area-btn:hover { background-color: #1976D2; transform: translateY(-2px); }
+    .area-btn::after { content: '→'; opacity: 0.7; }
+    
+    .class-btn { background-color: #4caf50; margin-bottom: 10px; }
+    .class-btn:hover { background-color: #388e3c; }
+
+    .sub-area-btn { background-color: #607D8B; }
+
+    .row { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; padding: 15px 0; }
+    .info { display: flex; flex-direction: column; }
+    .name-text { font-size: 1.1em; font-weight: bold; }
+    .sub-text { font-size: 0.85em; color: #666; }
+    
+    .btn-group { display: flex; gap: 8px; }
+    button { border: none; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em; }
+    .btn-present { background-color: #4caf50; color: white; }
+    .btn-leave { background-color: #ff9800; color: white; }
+    
+    .back-btn { background-color: #757575; color: white; margin-bottom: 15px; width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; }
+    .hidden { display: none !important; }
+    
+    #loader { text-align: center; color: #666; padding: 20px; font-size: 0.9em; }
+
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; 
+      z-index: 9999; backdrop-filter: blur(2px);
+    }
+    .modal-card {
+      background: white; padding: 24px; border-radius: 16px; width: 85%; max-width: 320px; text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    }
+    .modal-card h4 { margin: 0 0 8px 0; color: #333; }
+    .modal-card select, .modal-card input {
+      width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #ddd; font-size: 1.1em; box-sizing: border-box;
+    }
+    .modal-actions { display: flex; gap: 12px; }
+    .modal-actions button { flex: 1; padding: 12px; }
+    .btn-cancel { background: #f0f0f0; color: #444; }
+    .btn-confirm { background: #ff9800; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h3 id="title">🎓 崇正點名系統</h3>
+    
+    <!-- 班級選擇首頁 -->
+    <div id="class-select-grid" class="grid">
+      <p id="class-hint" style="text-align:center; color:#666;">正在讀取班級清單...</p>
+    </div>
+
+    <div id="main-content" class="hidden">
+      <button id="back-btn" class="back-btn hidden">← 返回</button>
+      <div id="loader" class="hidden">載入中...</div>
+      <div id="area-grid" class="grid hidden"></div>
+      <div id="sub-area-grid" class="grid hidden"></div>
+      <div id="name-list" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- 請假 Modal -->
+  <div id="leave-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h4 id="modal-title-name">請假登記</h4>
+      <p>請選擇原因：</p>
+      <select id="leave-reason" onchange="toggleOtherInput()">
+        <option value="病假">病假</option>
+        <option value="事假">事假</option>
+        <option value="公假">公假</option>
+        <option value="晚到">晚到</option>
+        <option value="其他">其他</option>
+      </select>
+      <input type="text" id="other-reason" class="hidden" placeholder="請輸入請假原因...">
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeLeaveModal()">取消</button>
+        <button class="btn-confirm" id="confirm-leave-btn">確認提交</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 請確認此 URL 與您的 GAS 部署網址一致
+    const GAS_URL = "https://script.google.com/macros/s/AKfycby2Eaaw-MCs-zfX5b5W5k_y20rfRZJVW4zMtZIqHMjNPFSkBUb9ZTrNuwSQmrG0iw2U/exec";
+    let allData = []; 
+    let selectedClass = ""; 
+    let currentTargetItem = null;
+    let currentTargetBtn = null;
+
+    const AREA_GROUPS = [
+      { name: "中和區~中和060區", keywords: ["中和00", "中和01", "中和02", "中和03", "中和04", "中和05", "中和060"] },
+      { name: "中和061區~中和開荒區", keywords: ["中和06", "中和07", "中和08", "中和09", "中和1", "開荒"] },
+      { name: "精明", keywords: ["精明"] },
+      { name: "馬來", keywords: ["馬來", "Malaysia"] },
+      { name: "印尼", keywords: ["印尼", "Indonesia"] },
+      { name: "越南 澳洲 孟加拉 加拿大 西班牙", keywords: ["越南", "澳洲", "孟加拉", "加拿大", "西班牙"] }
+    ];
+
+    window.onload = async function() {
+      try {
+        // 使用 init 指令取得班級
+        const res = await fetch(`${GAS_URL}?action=init`);
+        const result = await res.json();
+        const grid = document.getElementById('class-select-grid');
+        const hint = document.getElementById('class-hint');
+        
+        if (result.status !== "success" || !result.data.classes || result.data.classes.length === 0) {
+          hint.innerText = "目前沒有任何班級資料。";
+          return;
+        }
+
+        hint.innerText = "請選擇點名班級：";
+        result.data.classes.forEach(cls => {
+          const btn = document.createElement('button');
+          btn.className = 'area-btn class-btn';
+          btn.innerHTML = `<span>${cls}</span>`;
+          btn.onclick = () => selectClass(cls);
+          grid.appendChild(btn);
+        });
+      } catch (e) {
+        document.getElementById('class-hint').innerText = "無法載入班級清單，請檢查 GAS 網址與權限。";
+      }
+    };
+
+    async function selectClass(className) {
+      selectedClass = className;
+      document.getElementById('class-select-grid').classList.add('hidden');
+      document.getElementById('main-content').classList.remove('hidden');
+      document.getElementById('loader').classList.remove('hidden');
+      await loadData();
+    }
+
+    async function loadData() {
+      try {
+        // 使用 getMemberList 指令
+        const res = await fetch(`${GAS_URL}?action=getMemberList&className=${encodeURIComponent(selectedClass)}`);
+        const result = await res.json();
+        
+        if (result.status === "success") {
+            allData = result.data;
+            document.getElementById('loader').classList.add('hidden');
+            showMainAreas();
+        } else {
+            document.getElementById('loader').innerText = "讀取失敗：" + result.message;
+        }
+      } catch (err) {
+        document.getElementById('loader').innerText = "連線失敗。";
+      }
+    }
+
+    // 區域判斷邏輯 (維持不變)
+    function getParentGroupName(rawArea) {
+      if (!rawArea) return "其他";
+      const areaStr = String(rawArea);
+      if (areaStr.includes("中和")) {
+        const numMatch = areaStr.match(/\d+/);
+        if (numMatch) {
+          const num = parseInt(numMatch[0]);
+          if (num >= 1 && num <= 60) return "中和區~中和060區";
+          if (num >= 61) return "中和061區~中和開荒區";
+        }
+        if (areaStr.includes("開荒")) return "中和061區~中和開荒區";
+        return "中和區~中和060區";
+      }
+      for (const group of AREA_GROUPS) {
+        if (group.keywords.some(k => areaStr.includes(k))) return group.name;
+      }
+      return "其他";
+    }
+
+    function showMainAreas() {
+      const areaGrid = document.getElementById('area-grid');
+      const subGrid = document.getElementById('sub-area-grid');
+      const nameList = document.getElementById('name-list');
+      const backBtn = document.getElementById('back-btn');
+      const title = document.getElementById('title');
+
+      title.innerText = `📋 ${selectedClass} - 分類`;
+      areaGrid.innerHTML = '';
+
+      const displayGroups = AREA_GROUPS.map(g => g.name);
+      if (allData.some(item => getParentGroupName(item.area) === "其他")) displayGroups.push("其他");
+
+      displayGroups.forEach(groupName => {
+        const count = allData.filter(item => getParentGroupName(item.area) === groupName).length;
+        if (count > 0) {
+          const btn = document.createElement('button');
+          btn.className = 'area-btn';
+          btn.innerHTML = `<span>${groupName}</span><small>(${count}人)</small>`;
+          btn.onclick = () => showSubAreas(groupName);
+          areaGrid.appendChild(btn);
+        }
+      });
+
+      areaGrid.classList.remove('hidden');
+      subGrid.classList.add('hidden');
+      nameList.classList.add('hidden');
+      
+      backBtn.classList.remove('hidden');
+      backBtn.onclick = () => {
+        document.getElementById('main-content').classList.add('hidden');
+        document.getElementById('class-select-grid').classList.remove('hidden');
+        document.getElementById('title').innerText = "🎓 崇正點名系統";
+        allData = [];
+      };
+    }
+
+    function showSubAreas(parentName) {
+      const areaGrid = document.getElementById('area-grid');
+      const subGrid = document.getElementById('sub-area-grid');
+      const nameList = document.getElementById('name-list');
+      const backBtn = document.getElementById('back-btn');
+      const title = document.getElementById('title');
+
+      title.innerText = `📂 ${parentName}`;
+      subGrid.innerHTML = '';
+
+      const membersInParent = allData.filter(item => getParentGroupName(item.area) === parentName);
+      const subAreas = [...new Set(membersInParent.map(item => item.area))].sort();
+
+      subAreas.forEach(subName => {
+        const count = membersInParent.filter(item => item.area === subName).length;
+        const btn = document.createElement('button');
+        btn.className = 'area-btn sub-area-btn';
+        btn.innerHTML = `<span>${subName || "未分類"}</span><small>(${count}人)</small>`;
+        btn.onclick = () => showNamesByFinalArea(subName, parentName);
+        subGrid.appendChild(btn);
+      });
+
+      areaGrid.classList.add('hidden');
+      subGrid.classList.remove('hidden');
+      nameList.classList.add('hidden');
+      backBtn.onclick = showMainAreas;
+    }
+
+    function showNamesByFinalArea(finalArea, parentName) {
+      const subGrid = document.getElementById('sub-area-grid');
+      const nameList = document.getElementById('name-list');
+      const backBtn = document.getElementById('back-btn');
+      const title = document.getElementById('title');
+
+      title.innerText = `📍 ${finalArea || "未分類"}`;
+      renderList(allData.filter(item => item.area === finalArea));
+
+      subGrid.classList.add('hidden');
+      nameList.classList.remove('hidden');
+      backBtn.onclick = () => showSubAreas(parentName);
+    }
+
+    function renderList(items) {
+      const nameList = document.getElementById('name-list');
+      nameList.innerHTML = '';
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'row';
+        div.innerHTML = `
+          <div class="info">
+            <span class="name-text">${item.name}</span>
+            <span class="sub-text">${item.area} | 座號: ${item.seatNum}</span>
+          </div>
+        `;
+        const btnGroup = document.createElement('div');
+        btnGroup.className = 'btn-group';
+        
+        const b1 = document.createElement('button'); 
+        b1.className = 'btn-present'; 
+        b1.innerText = '出席';
+        b1.onclick = () => submitData(b1, item, '出席');
+        
+        const b2 = document.createElement('button'); 
+        b2.className = 'btn-leave'; 
+        b2.innerText = '請假';
+        b2.onclick = () => openLeaveModal(b2, item);
+        
+        btnGroup.appendChild(b1); 
+        btnGroup.appendChild(b2);
+        div.appendChild(btnGroup);
+        nameList.appendChild(div);
+      });
+    }
+
+    // 使用 POST 方式傳送至新後端
+    async function submitData(btn, item, status, reason = "") {
+      const originalText = btn.innerText;
+      btn.disabled = true; 
+      btn.innerText = "...";
+      
+      const payload = {
+        action: 'updateStatus',
+        className: selectedClass,
+        memberId: item.memberId,
+        name: item.name,
+        gender: item.gender,
+        seatNum: item.seatNum,
+        area: item.area,
+        status: status,
+        reason: reason
+      };
+
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if(result.status === "success") {
+          btn.innerText = "已送出";
+          btn.style.backgroundColor = "#999";
+        } else {
+          alert(result.message);
+          btn.innerText = originalText;
+          btn.disabled = false;
+        }
+      } catch (err) { 
+        alert("傳送失敗，請稍後再試。"); 
+        btn.innerText = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    function openLeaveModal(btn, item) {
+      currentTargetItem = item;
+      currentTargetBtn = btn;
+      document.getElementById('modal-title-name').innerText = `為 ${item.name} 登記請假`;
+      document.getElementById('leave-modal').classList.remove('hidden');
+      document.getElementById('confirm-leave-btn').onclick = () => {
+        const selectValue = document.getElementById('leave-reason').value;
+        const otherValue = document.getElementById('other-reason').value;
+        const finalReason = selectValue === "其他" ? otherValue : selectValue;
+        if (selectValue === "其他" && !otherValue.trim()) { alert("請輸入原因"); return; }
+        submitData(currentTargetBtn, currentTargetItem, '請假', finalReason);
+        closeLeaveModal();
+      };
+    }
+
+    function toggleOtherInput() {
+      const select = document.getElementById('leave-reason');
+      const otherInput = document.getElementById('other-reason');
+      if (select.value === "其他") { otherInput.classList.remove('hidden'); otherInput.focus(); }
+      else { otherInput.classList.add('hidden'); }
+    }
+
+    function closeLeaveModal() {
+      document.getElementById('leave-modal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>

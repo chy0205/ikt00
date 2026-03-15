@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>寶光崇正班期簽到系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        #reader { border: none !important; border-radius: 2rem; overflow: hidden; }
+        #reader__dashboard_section_csr button { background-color: #3b82f6 !important; color: white !important; padding: 0.6rem 1.2rem !important; border-radius: 0.75rem !important; border: none !important; font-size: 14px; font-weight: 700; }
+        #debug-log { font-family: monospace; font-size: 11px; max-height: 100px; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+        .admin-active { color: #f59e0b !important; background-color: #fef3c7 !important; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans pb-10 text-slate-900">
+
+    <div class="max-w-md mx-auto px-4 py-8">
+        <div class="bg-white rounded-[2rem] shadow-lg p-6 mb-6 border-2 border-white">
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-2xl font-black text-blue-900 tracking-tighter">班期簽到管理</h1>
+                <button onclick="unlockAdmin()" id="admin-btn" class="p-2 bg-slate-100 rounded-xl text-slate-400 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">1. 目前地點 (定位與密碼)</label>
+                    <select id="location-selector" onchange="changeLocation()" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
+                        <option value="">載入中...</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest text-green-600">2. 選擇簽到班級 (比對名冊)</label>
+                    <select id="class-selector" onchange="changeClass()" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-green-500 appearance-none shadow-inner">
+                        <option value="">載入中...</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="reader-container" class="relative bg-white rounded-[2rem] shadow-2xl p-2 mb-6 ring-4 ring-white transition-all">
+            <div id="reader" class="w-full"></div>
+            <div id="admin-badge" class="hidden absolute top-4 right-4 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-lg z-10 shadow-lg animate-bounce">管理員：免定位模式</div>
+        </div>
+
+        <div id="status-card" class="hidden animate-in zoom-in duration-200 mb-6 border-b-8 rounded-[2.5rem] overflow-hidden shadow-2xl transition-all">
+            <div id="card-loading" class="hidden bg-blue-600 text-white p-10 flex flex-col items-center gap-3 text-center">
+                <div class="animate-spin h-10 w-10 border-4 border-white/30 border-t-white rounded-full"></div>
+                <p class="text-xl font-black tracking-widest uppercase">驗證中...</p>
+            </div>
+            <div id="card-success" class="hidden bg-green-600 text-white p-10 flex flex-col items-center gap-4 text-center">
+                <span id="display-seat" class="bg-white text-green-600 font-black text-xl px-4 py-1 rounded-xl shadow-lg">座號 --</span>
+                <div>
+                    <p id="display-prayer" class="text-6xl font-black mb-1 leading-none text-white">姓名</p>
+                    <p id="display-temple" class="text-lg opacity-90 font-bold text-white">單位</p>
+                </div>
+            </div>
+            <div id="card-error" class="hidden bg-red-600 text-white p-10 flex flex-col items-center gap-3 text-center">
+                <p id="error-message" class="text-2xl font-black leading-tight">驗證失敗</p>
+                <p id="scanned-id-hint" class="text-xs font-mono opacity-70 break-all">ID: --</p>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 rounded-2xl p-4 shadow-inner">
+            <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 text-white">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">系統日誌</span>
+                <button onclick="clearLog()" class="text-[10px] text-slate-500 underline font-bold">清除</button>
+            </div>
+            <div id="debug-log" class="text-blue-200"></div>
+        </div>
+    </div>
+
+    <script>
+        const SPREADSHEET_URL = "https://script.google.com/macros/s/AKfycby2Eaaw-MCs-zfX5b5W5k_y20rfRZJVW4zMtZIqHMjNPFSkBUb9ZTrNuwSQmrG0iw2U/exec";
+        
+        let allConfig = { locations: [], classes: [] };
+        let currentLoc = null;
+        let currentClass = null;
+        let verifiedCoords = null;
+        let isAdminMode = false;
+        let isProcessing = false;
+        let lastId = "";
+        let lastTime = 0;
+
+        const locSelector = document.getElementById('location-selector');
+        const classSelector = document.getElementById('class-selector');
+        const debugLog = document.getElementById('debug-log');
+        const adminBtn = document.getElementById('admin-btn');
+        const adminBadge = document.getElementById('admin-badge');
+
+        function log(msg, color = "text-blue-200") {
+            const time = new Date().toLocaleTimeString('zh-TW', {hour12: false});
+            const div = document.createElement('div');
+            div.className = `mb-1 ${color}`;
+            div.innerHTML = `<span class="opacity-40 text-white">[${time}]</span> ${msg}`;
+            debugLog.appendChild(div);
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+
+        function clearLog() { debugLog.innerHTML = ""; }
+
+        async function initApp() {
+            log("☁️ 嘗試同步雲端設定...");
+            try {
+                const res = await fetch(`${SPREADSHEET_URL}?action=init`, { cache: 'no-store' });
+                const result = await res.json();
+                
+                if (result.status === "success" && result.data) {
+                    allConfig = result.data;
+                    updateSelectors();
+                    log("✅ 設定載入成功");
+                } else {
+                    log("❌ 資料格式錯誤: " + result.message, "text-red-400");
+                }
+            } catch (e) { 
+                log(`❌ 連線失敗: ${e.message}`, "text-red-400"); 
+            }
+        }
+
+        function updateSelectors() {
+            if (allConfig.locations && allConfig.locations.length > 0) {
+                locSelector.innerHTML = allConfig.locations.map((l, i) => 
+                    `<option value="${i}">${l.name || '未命名地點'}</option>`
+                ).join('');
+                changeLocation();
+            } else {
+                locSelector.innerHTML = '<option value="">無地點資料</option>';
+            }
+
+            if (allConfig.classes && allConfig.classes.length > 0) {
+                classSelector.innerHTML = allConfig.classes.map((className, i) => 
+                    `<option value="${i}">${className}</option>`
+                ).join('');
+                changeClass();
+            } else {
+                classSelector.innerHTML = '<option value="">無班級資料</option>';
+            }
+        }
+
+        function changeLocation() {
+            const index = locSelector.value;
+            if (index !== "" && allConfig.locations[index]) {
+                currentLoc = allConfig.locations[index];
+                resetAdminStatus();
+                log(`📍 地點：${currentLoc.name}`);
+            }
+        }
+
+        function changeClass() {
+            const index = classSelector.value;
+            if (index !== "" && allConfig.classes[index]) {
+                currentClass = allConfig.classes[index];
+                log(`📑 班級：${currentClass}`);
+            }
+        }
+
+        function resetAdminStatus() {
+            isAdminMode = false;
+            verifiedCoords = null;
+            adminBadge.classList.add('hidden');
+            adminBtn.classList.remove('admin-active');
+        }
+
+        function unlockAdmin() {
+            if (!currentLoc) {
+                alert("請先選擇地點");
+                return;
+            }
+            
+            if (isAdminMode) {
+                resetAdminStatus();
+                log("🔒 關閉管理員模式，恢復定位驗證");
+                return;
+            }
+
+            const input = prompt(`請輸入 ${currentLoc.name} 的管理員解鎖密碼：`);
+            if (input === null) return;
+
+            if (input === String(currentLoc.password)) {
+                isAdminMode = true;
+                adminBadge.classList.remove('hidden');
+                adminBtn.classList.add('admin-active');
+                log("🔓 免定位模式開啟 (管理員已授權)", "text-amber-400 font-bold");
+            } else { 
+                alert("密碼錯誤，無法解鎖免定位功能。"); 
+                log("⚠️ 管理員密碼嘗試失敗", "text-red-300");
+            }
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2-lat1) * Math.PI/180, Δλ = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        async function onScanSuccess(decodedText) {
+            if (isProcessing || !currentLoc || !currentClass) return;
+            let memberid = "";
+            try {
+                const qrData = JSON.parse(decodedText.trim());
+                memberid = (qrData.memberId || qrData.id || "").toString().trim();
+            } catch (e) { memberid = decodedText.trim(); }
+
+            if (!memberid) return;
+            const now = Date.now();
+            
+            // 加快速度：相同 ID 冷卻時間縮短為 2 秒 (原為 5 秒)
+            if (memberid === lastId && (now - lastTime < 2000)) return;
+
+            isProcessing = true; lastId = memberid; lastTime = now;
+            const statusCard = document.getElementById('status-card');
+            statusCard.classList.remove('hidden');
+            document.getElementById('card-loading').classList.remove('hidden');
+            document.getElementById('card-success').classList.add('hidden');
+            document.getElementById('card-error').classList.add('hidden');
+
+            try {
+                // 加快速度：如果已經有 verifiedCoords，就不再執行 navigator.geolocation
+                if (!isAdminMode && !verifiedCoords) {
+                    log("📍 執行首次定位驗證...");
+                    const pos = await new Promise((res, rej) => {
+                        navigator.geolocation.getCurrentPosition(
+                            p => res(p.coords), 
+                            e => {
+                                let msg = "定位失敗";
+                                if (e.code === 1) msg = "請允許瀏覽器定位權限";
+                                rej(new Error(msg));
+                            }, 
+                            { timeout: 5000, enableHighAccuracy: true } // 縮短定位超時為 5 秒
+                        );
+                    });
+                    
+                    const dist = getDistance(pos.latitude, pos.longitude, currentLoc.lat, currentLoc.lng);
+                    log(`📏 距離約 ${Math.round(dist)}m`);
+                    
+                    if (dist > currentLoc.limit) {
+                        throw new Error(`超出範圍 (${Math.round(dist)}m)`);
+                    }
+                    verifiedCoords = pos; // 儲存驗證成功狀態，下次跳過
+                    log("✅ 定位驗證已通過，後續掃描將跳過驗證", "text-green-400 text-[10px]");
+                } else if (verifiedCoords) {
+                    // 已驗證過，直接繼續
+                } else if (isAdminMode) {
+                    log("⚡ 管理員模式：跳過定位驗證", "text-amber-400");
+                }
+
+                log(`🚀 發送簽到：${memberid}`);
+                const response = await fetch(SPREADSHEET_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ 
+                        action: "signin", 
+                        memberId: memberid, 
+                        locationName: currentLoc.name,
+                        className: currentClass,
+                        status: isAdminMode ? "免定位模式" : "定位驗證成功",
+                        reason: "" 
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    document.getElementById('display-prayer').innerText = result.data.name || "未知";
+                    document.getElementById('display-seat').innerText = `座號 ${result.data.seatNum || '無'}`;
+                    document.getElementById('display-temple').innerText = result.data.area || "";
+                    document.getElementById('card-loading').classList.add('hidden');
+                    document.getElementById('card-success').classList.remove('hidden');
+                    log(`✅ ${result.data.name} 簽到成功`);
+                    
+                    // 加快速度：成功顯示時間縮短為 1.5 秒 (原為 3.5 秒)
+                    setTimeout(() => { 
+                        isProcessing = false; 
+                        statusCard.classList.add('hidden'); 
+                    }, 1500);
+                } else { 
+                    throw new Error(result.message); 
+                }
+            } catch (err) {
+                document.getElementById('card-loading').classList.add('hidden');
+                document.getElementById('card-error').classList.remove('hidden');
+                document.getElementById('error-message').innerText = err.message;
+                document.getElementById('scanned-id-hint').innerText = "ID: " + memberid;
+                log(`❌ 失敗: ${err.message}`, "text-red-400");
+                
+                // 失敗則重置定位快取，要求下次重新驗證
+                verifiedCoords = null; 
+                setTimeout(() => { isProcessing = false; statusCard.classList.add('hidden'); }, 3000);
+            }
+        }
+
+        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+            fps: 30, 
+            qrbox: 250,
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
+            }
+        }, false);
+        html5QrcodeScanner.render(onScanSuccess, () => {});
+        window.onload = initApp;
+    </script>
+</body>
+</html>
