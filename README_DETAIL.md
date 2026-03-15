@@ -17,57 +17,39 @@
 1. **初始化 (Initialization)**:
    - 啟動時發送 `action=init` 請求獲取班級清單。
    - **自動優化**: 若班級數量為 1，系統會通過 `selectClass()` 自動跳過首頁按鈕選擇。
-2. **數據加載**:
-   - `loadFormData()` 依據所選班級抓取名冊。
-   - 名冊包含：`memberId`, `name`, `gender`, `seatNum`, `area` (單位)。
-3. **單位分組 (Dynamic Dropdown)**:
+2. **單位分組 (Dynamic Dropdown)**:
    - 核心函數 `initDropdowns()`：過濾出不重複的單位名稱並排序。
    - **自動跳過**: 若全班僅有一個單位，選單將自動隱藏並展示名冊。
-4. **狀態提交**:
-   - 使用 `submitFormData()` 封裝 POST 請求。
-   - 支援「出席」與「請假」（包含 Modal 彈窗收集額外理由）。
 
-### B. QR Code 簽到邏輯 (High-Performance QR Scanner)
-1. **解碼引擎 (ZXing Library)**:
-   - 引入 `@zxing/library` 取代 html5-qrcode。
-   - 配置 `hints.set(ZXing.DecodeHintType.TRY_HARDER, true)` 以應對低畫質、遠距離或複雜編碼。
-2. **高品質影像請求**:
-   - 請求 `1080p` 理想解析度。
-   - 鎖定 `facingMode: "environment"` (後置相機)。
-3. **安全驗證機制**:
-   - **一級防護 (密碼)**: 進入 QR 頁面前需輸入 Password。
-   - **二級防護 (定位)**: 計算使用者座標與設定地點 (`currentLoc.lat/lng`) 之間的 Haversine 距離。若超過 `limit` 則拒絕簽到。
-   - **管理員模式**: 輸入地點特定密碼可解除定位限制，方便室內或訊號不佳時手動簽到。
-4. **掃描緩衝與查重**:
-   - 設定 3 秒內禁止重複掃描相同 ID，防止因畫面晃動導致多次提交。
+### B. QR Code 簽到邏輯 (Enhanced Scanner)
+1. **沈浸式全螢幕介面**:
+   - 透過 `fixed inset-0` 實現相機影像佔滿全螢幕。
+   - 採用 `object-cover` 確保預覽影片比例正確且填滿視區。
+2. **智慧預設變焦 (Default 2x Zoom)**:
+   - 在 `initScanner` 階段調用 `getVideoTracks().getCapabilities()`。
+   - 若硬體支援 `zoom`，程式會自動將 `zoom` 設定為 **2.0**，極大提升遠距離掃描的便利性。
+3. **懸浮訊息系統 (Floating Overlay)**:
+   - 簽到結果、載入狀態與錯誤提示皆透過 `absolute` 定位的懸浮卡片呈現。
+   - 具備自動定時隱藏機制，確保掃描過程連貫。
+4. **安全驗證機制**:
+   - **二級防護 (定位)**: 計算使用者座標與設定地點之間的 Haversine 距離。
+   - **管理員模式**: 輸入地點特定密碼可解除定位限制。
 
 ---
 
 ## 3. UI/UX 設計規範 (Design Tokens)
 
-- **視覺風格**: 現代卡片式介面 (Card-based UI)，使用玻璃擬態 (Glassmorphism) 陰影效果。
+- **視覺風格**: 現代卡片式介面 + 沈浸式視訊背景。
 - **色彩系統**:
-  - 主色: `blue-600` (系統導航)
+  - 主色: `blue-600` (系統導航 / 定位驗證)
   - 成功: `green-600` (出席/簽到成功)
-  - 警告: `amber-500` (管理員/請假)
+  - 警告: `amber-500` (管理員模式)
   - 錯誤: `red-600` (驗證失敗/超距)
-- **響應式**: 完全適配行動裝置，採用 `max-w-md` 限制桌面端寬度，確保在手機瀏覽器上呈現最舒適的點擊範圍。
+- **響應式**: 適配行動裝置，QR 掃描頁面採用全螢幕佈局，最大化識別區域。
 
 ---
 
-## 4. API 介面定義 (API Reference)
-
-### GET 請求
-- `?action=init`: 獲取 `locations` 與 `classes` 基礎配置。
-- `?action=getMemberList&className={name}`: 獲取特定班級的名冊 CSV。
-
-### POST 請求 (JSON Body)
-- `action: "signin"`: QR Code 自動簽到。
-- `action: "updateStatus"`: 手動更新出席狀態。
-
----
-
-## 5. 開發者紀錄 (Changelog)
-- **v2.0 (最新)**: 更換 ZXing 掃描核心，實現自動跳過單一選項邏輯，增加管理員免定位模式。
+## 4. 開發者紀錄 (Changelog)
+- **v2.2 (最新)**: 實作沈浸式全螢幕掃描、自動 2x 變焦以及懸浮訊息視窗。
+- **v2.0**: 替換 ZXing 掃描核心，實現自動跳過單一選項邏輯。
 - **v1.5**: 整合手動表單與 QR 簽到至單一 Tab 頁面。
-- **v1.0**: 初始版本，基礎數據對接。
