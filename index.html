@@ -725,17 +725,25 @@
                 const videoInputDevices = await codeReader.listVideoInputDevices();
                 if (videoInputDevices.length === 0) throw new Error("無相機");
 
-                let selectedDeviceId = videoInputDevices[0].deviceId;
-                for (const device of videoInputDevices) {
-                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
-                        selectedDeviceId = device.deviceId;
-                        break;
-                    }
+                let selectedDeviceId = null;
+                // 優先過濾後置鏡頭
+                const backCams = videoInputDevices.filter(d =>
+                    d.label.toLowerCase().includes('back') ||
+                    d.label.toLowerCase().includes('rear') ||
+                    d.label.toLowerCase().includes('環境') ||
+                    d.label.toLowerCase().includes('後')
+                );
+
+                if (backCams.length > 0) {
+                    selectedDeviceId = backCams[0].deviceId;
+                } else {
+                    selectedDeviceId = videoInputDevices[0].deviceId;
                 }
 
                 const constraints = {
                     video: {
-                        deviceId: { exact: selectedDeviceId },
+                        deviceId: selectedDeviceId ? { ideal: selectedDeviceId } : undefined,
+                        facingMode: { ideal: "environment" },
                         width: { ideal: 1920 },
                         height: { ideal: 1080 }
                     }
