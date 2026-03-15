@@ -249,6 +249,22 @@
                             <option value="">載入中...</option>
                         </select>
                     </div>
+
+                    <div id="camera-control-section" class="pt-2 border-t border-slate-100">
+                        <label
+                            class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest text-amber-600">3.
+                            相機控制</label>
+                        <div class="flex gap-2 mt-1">
+                            <select id="camera-selector" onchange="switchCamera()"
+                                class="flex-1 bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-amber-500 appearance-none shadow-inner text-sm">
+                                <option value="">檢測相機中...</option>
+                            </select>
+                            <button id="toggle-camera-btn" onclick="toggleCamera()"
+                                class="bg-red-500 text-white px-4 py-2 rounded-xl font-bold shadow-lg active:transform active:scale-95 transition-all text-sm">
+                                關閉鏡頭
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -656,9 +672,11 @@
         }
 
         const codeReader = new ZXing.BrowserQRCodeReader();
+        let selectedDeviceId = null;
+        let isCameraActive = false;
 
         async function initScanner() {
-            if (html5QrcodeScanner) return;
+            if (isCameraActive) return;
 
             log("📷 正在啟動高品質掃描器...");
             try {
@@ -667,41 +685,82 @@
                     throw new Error("找不到相機裝置");
                 }
 
-                // 優先選擇後置鏡頭
-                let selectedDeviceId = videoInputDevices[0].deviceId;
-                for (const device of videoInputDevices) {
-                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
-                        selectedDeviceId = device.deviceId;
-                        break;
+                // 填充相機選擇器
+                const camSelector = document.getElementById('camera-selector');
+                camSelector.innerHTML = videoInputDevices.map(device =>
+                    `<option value="${device.deviceId}">${device.label || '相機 ' + device.deviceId.slice(0, 5)}</option>`
+                ).join('');
+
+                // 首次啟動：優先選擇後置鏡頭
+                if (!selectedDeviceId) {
+                    selectedDeviceId = videoInputDevices[0].deviceId;
+                    for (const device of videoInputDevices) {
+                        if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
+                            selectedDeviceId = device.deviceId;
+                            break;
+                        }
                     }
                 }
+                camSelector.value = selectedDeviceId;
 
-                // 設定高品質參數
-                const constraints = {
-                    video: {
-                        deviceId: { exact: selectedDeviceId },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        facingMode: "environment",
-                        focusMode: "continuous" // 部分安卓支援
-                    }
-                };
+                startScanning();
 
-                html5QrcodeScanner = true; // 標記已啟動
-                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video-preview', async (result, err) => {
+                log("✅ 掃描器啟動成功 (1080p)", "text-green-400");
+                updateCameraButton(true);
+            } catch (err) {
+                log(`❌ 相機啟動失敗: ${err.message}`, "text-red-400");
+                isCameraActive = false;
+            }
+        }
+
+        async function startScanning() {
+            isCameraActive = true;
+            try {
+                // ZXing 的 decodeFromVideoDevice 會自動處理 video 標籤
+                await codeReader.decodeFromVideoDevice(selectedDeviceId, 'video-preview', (result, err) => {
                     if (result) {
                         onScanSuccess(result.getText());
                     }
-                    if (err && !(err instanceof ZXing.NotFoundException)) {
-                        // 忽略 NotFound 異常（正在掃描中）
-                        // console.error(err);
-                    }
                 });
-
-                log("✅ 掃描器啟動成功 (1080p)", "text-green-400");
             } catch (err) {
-                log(`❌ 相機啟動失敗: ${err.message}`, "text-red-400");
-                html5QrcodeScanner = null;
+                log(`❌ 掃描過程錯誤: ${err.message}`, "text-red-400");
+                stopScanning();
+            }
+        }
+
+        function stopScanning() {
+            codeReader.reset();
+            isCameraActive = false;
+            updateCameraButton(false);
+            log("🛑 鏡頭已關閉", "text-slate-400");
+        }
+
+        function toggleCamera() {
+            if (isCameraActive) {
+                stopScanning();
+            } else {
+                initScanner();
+            }
+        }
+
+        function switchCamera() {
+            selectedDeviceId = document.getElementById('camera-selector').value;
+            if (isCameraActive) {
+                stopScanning();
+                initScanner();
+            }
+        }
+
+        function updateCameraButton(active) {
+            const btn = document.getElementById('toggle-camera-btn');
+            if (active) {
+                btn.innerText = "關閉鏡頭";
+                btn.classList.remove('bg-green-500');
+                btn.classList.add('bg-red-500');
+            } else {
+                btn.innerText = "開啟鏡頭";
+                btn.classList.remove('bg-red-500');
+                btn.classList.add('bg-green-500');
             }
         }
 
