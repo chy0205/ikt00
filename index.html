@@ -382,14 +382,22 @@
 
                     const grid = document.getElementById('class-select-grid');
                     const hint = document.getElementById('class-hint');
-                    hint.innerText = "請選擇點名班級：";
-                    allConfig.classes.forEach(cls => {
-                        const btn = document.createElement('button');
-                        btn.className = 'area-btn class-btn';
-                        btn.innerHTML = `<span>${cls}</span>`;
-                        btn.onclick = () => selectClass(cls);
-                        grid.appendChild(btn);
-                    });
+
+                    if (allConfig.classes && allConfig.classes.length === 1) {
+                        // 如果只有一個班級，直接進入該班級
+                        selectClass(allConfig.classes[0]);
+                    } else if (allConfig.classes && allConfig.classes.length > 0) {
+                        hint.innerText = "請選擇點名班級：";
+                        allConfig.classes.forEach(cls => {
+                            const btn = document.createElement('button');
+                            btn.className = 'area-btn class-btn';
+                            btn.innerHTML = `<span>${cls}</span>`;
+                            btn.onclick = () => selectClass(cls);
+                            grid.appendChild(btn);
+                        });
+                    } else {
+                        hint.innerText = "目前沒有可用的班級。";
+                    }
 
                     updateQRSelectors();
                 } else {
@@ -433,15 +441,29 @@
             // 取得所有唯一的單位名稱並排序
             const units = [...new Set(allData.map(item => item.area || "未分類"))].sort();
 
-            units.forEach(uName => {
-                const count = allData.filter(item => item.area === uName).length;
+            if (units.length === 1) {
+                // 如果只有一個單位，自動選中並隱藏下拉選單
+                const uName = units[0];
+                const count = allData.length;
                 const opt = document.createElement('option');
                 opt.value = uName;
                 opt.innerText = `${uName} (${count}人)`;
                 unitSelect.appendChild(opt);
-            });
+                unitSelect.value = uName;
 
-            document.getElementById('dropdown-controls').classList.remove('hidden-custom');
+                document.getElementById('dropdown-controls').classList.add('hidden-custom');
+                onUnitChange();
+            } else {
+                units.forEach(uName => {
+                    const count = allData.filter(item => item.area === uName).length;
+                    const opt = document.createElement('option');
+                    opt.value = uName;
+                    opt.innerText = `${uName} (${count}人)`;
+                    unitSelect.appendChild(opt);
+                });
+                document.getElementById('dropdown-controls').classList.remove('hidden-custom');
+            }
+
             document.getElementById('form-back-btn').classList.remove('hidden-custom');
             document.getElementById('form-back-btn').onclick = () => {
                 document.getElementById('main-content').classList.add('hidden-custom');
