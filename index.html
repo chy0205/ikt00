@@ -249,34 +249,6 @@
                             <option value="">載入中...</option>
                         </select>
                     </div>
-
-                    <div id="camera-control-section" class="pt-2 border-t border-slate-100">
-                        <label
-                            class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest text-amber-600">3.
-                            相機控制</label>
-                        <div class="flex gap-2 mt-1">
-                            <select id="camera-selector" onchange="switchCamera()"
-                                class="flex-1 bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-amber-500 appearance-none shadow-inner text-sm">
-                                <option value="">檢測相機中...</option>
-                            </select>
-                            <button id="toggle-camera-btn" onclick="toggleCamera()"
-                                class="bg-red-500 text-white px-4 py-2 rounded-xl font-bold shadow-lg active:transform active:scale-95 transition-all text-sm">
-                                關閉鏡頭
-                            </button>
-                        </div>
-                        <!-- 焦距/縮放控制 -->
-                        <div id="zoom-container" class="mt-3 px-1 hidden-custom">
-                            <div class="flex justify-between items-center mb-1">
-                                <label
-                                    class="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-amber-500">數位縮放
-                                    (距離強化)</label>
-                                <span id="zoom-value" class="text-[10px] font-mono text-amber-600 font-bold">1.0x</span>
-                            </div>
-                            <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1"
-                                class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                oninput="applyZoom(this.value)">
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -683,17 +655,10 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         }
 
-        // 初始化 ZXing Reader 並開啟「全力解碼 (TRY_HARDER)」模式
-        const hints = new Map();
-        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-        const codeReader = new ZXing.BrowserQRCodeReader(hints);
-
-        let selectedDeviceId = null;
-        let isCameraActive = false;
-        let activeStream = null;
+        const codeReader = new ZXing.BrowserQRCodeReader();
 
         async function initScanner() {
-            if (isCameraActive) return;
+            if (html5QrcodeScanner) return;
 
             log("📷 正在啟動高品質掃描器...");
             try {
@@ -702,134 +667,41 @@
                     throw new Error("找不到相機裝置");
                 }
 
-                const camSelector = document.getElementById('camera-selector');
-                camSelector.innerHTML = videoInputDevices.map(device =>
-                    `<option value="${device.deviceId}">${device.label || '相機 ' + device.deviceId.slice(0, 5)}</option>`
-                ).join('');
-
-                if (!selectedDeviceId) {
-                    selectedDeviceId = videoInputDevices[0].deviceId;
-                    for (const device of videoInputDevices) {
-                        if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
-                            selectedDeviceId = device.deviceId;
-                            break;
-                        }
+                // 優先選擇後置鏡頭
+                let selectedDeviceId = videoInputDevices[0].deviceId;
+                for (const device of videoInputDevices) {
+                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
+                        selectedDeviceId = device.deviceId;
+                        break;
                     }
                 }
-                camSelector.value = selectedDeviceId;
 
-                await startScanning();
-
-                log("✅ 掃描器啟動成功 (距離強化啟動)", "text-green-400");
-                updateCameraButton(true);
-            } catch (err) {
-                log(`❌ 相機啟動失敗: ${err.message}`, "text-red-400");
-                isCameraActive = false;
-            }
-        }
-
-        async function startScanning() {
-            isCameraActive = true;
-            try {
-                // 設定高品質解析度
+                // 設定高品質參數
                 const constraints = {
                     video: {
                         deviceId: { exact: selectedDeviceId },
                         width: { ideal: 1920 },
-                        height: { ideal: 1080 }
+                        height: { ideal: 1080 },
+                        facingMode: "environment",
+                        focusMode: "continuous" // 部分安卓支援
                     }
                 };
 
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                activeStream = stream;
-
-                // 將串流綁定到預覽標籤
-                const videoElement = document.getElementById('video-preview');
-                videoElement.srcObject = stream;
-                videoElement.setAttribute('playsinline', true);
-                await videoElement.play();
-
-                // 檢測縮放功能 (Zoom)
-                const track = stream.getVideoTracks()[0];
-                const capabilities = track.getCapabilities();
-                const zoomContainer = document.getElementById('zoom-container');
-                const zoomSlider = document.getElementById('zoom-slider');
-
-                if (capabilities.zoom) {
-                    zoomContainer.classList.remove('hidden-custom');
-                    zoomSlider.min = capabilities.zoom.min;
-                    zoomSlider.max = capabilities.zoom.max;
-                    zoomSlider.step = capabilities.zoom.step || 0.1;
-                    zoomSlider.value = capabilities.zoom.min;
-                    document.getElementById('zoom-value').innerText = `${zoomSlider.value}x`;
-                    log("🔍 縮放功能已啟用");
-                } else {
-                    zoomContainer.classList.add('hidden-custom');
-                    log("⚠️ 此相機不支援數位縮放");
-                }
-
-                // 開始解碼
-                codeReader.decodeFromStream(stream, 'video-preview', (result, err) => {
+                html5QrcodeScanner = true; // 標記已啟動
+                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video-preview', async (result, err) => {
                     if (result) {
                         onScanSuccess(result.getText());
                     }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        // 忽略 NotFound 異常（正在掃描中）
+                        // console.error(err);
+                    }
                 });
 
+                log("✅ 掃描器啟動成功 (1080p)", "text-green-400");
             } catch (err) {
-                log(`❌ 掃描過程錯誤: ${err.message}`, "text-red-400");
-                stopScanning();
-            }
-        }
-
-        async function applyZoom(val) {
-            if (!activeStream) return;
-            const track = activeStream.getVideoTracks()[0];
-            try {
-                await track.applyConstraints({ advanced: [{ zoom: parseFloat(val) }] });
-                document.getElementById('zoom-value').innerText = `${parseFloat(val).toFixed(1)}x`;
-            } catch (e) {
-                console.error("Zoom apply error", e);
-            }
-        }
-
-        function stopScanning() {
-            codeReader.reset();
-            if (activeStream) {
-                activeStream.getTracks().forEach(track => track.stop());
-                activeStream = null;
-            }
-            isCameraActive = false;
-            updateCameraButton(false);
-            document.getElementById('zoom-container').classList.add('hidden-custom');
-            log("🛑 鏡頭已關閉", "text-slate-400");
-        }
-
-        function toggleCamera() {
-            if (isCameraActive) {
-                stopScanning();
-            } else {
-                initScanner();
-            }
-        }
-
-        function switchCamera() {
-            selectedDeviceId = document.getElementById('camera-selector').value;
-            if (isCameraActive) {
-                stopScanning();
-                initScanner();
-            }
-        }
-
-        function updateCameraButton(active) {
-            const btn = document.getElementById('toggle-camera-btn');
-            if (active) {
-                btn.innerText = "關閉鏡頭";
-                btn.classList.remove('bg-green-500');
-                btn.classList.add('bg-red-500');
-            } else {
-                btn.innerText = "開啟鏡頭";
-                btn.classList.remove('bg-red-500');
-                btn.classList.add('bg-green-500');
+                log(`❌ 相機啟動失敗: ${err.message}`, "text-red-400");
+                html5QrcodeScanner = null;
             }
         }
 
