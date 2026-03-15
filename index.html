@@ -249,79 +249,93 @@
         </div>
 
         <!-- =========== [QR Code 簽到頁面] =========== -->
-        <div id="view-qrcode" class="hidden-custom">
-            <div class="bg-white rounded-[2rem] shadow-lg p-6 mb-6 border-2 border-white">
-                <div class="flex justify-between items-center mb-4">
-                    <h1 class="text-2xl font-black text-blue-900 tracking-tighter">班期簽到管理</h1>
-                    <button onclick="unlockAdmin()" id="admin-btn"
-                        class="p-2 bg-slate-100 rounded-xl text-slate-400 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </svg>
+        <div id="view-qrcode" class="hidden-custom qr-fullscreen">
+            <!-- 頂部懸浮控制項 -->
+            <div class="floating-controls space-y-3">
+                <div class="flex gap-2">
+                    <button onclick="switchView('form')"
+                        class="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl active:scale-95 transition-all text-slate-700 font-bold border border-white/50">
+                        ← 返回
                     </button>
+                    <div
+                        class="flex-1 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 px-4 py-2 flex justify-between items-center overflow-hidden">
+                        <div class="truncate mr-2">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">目前設定</p>
+                            <p id="floating-info-text" class="text-xs font-black text-blue-900 truncate">請先選擇地點班級</p>
+                        </div>
+                        <button onclick="toggleConfigDrawer()"
+                            class="text-blue-600 font-black text-xs shrink-0">變更</button>
+                    </div>
                 </div>
 
-                <div class="space-y-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">1. 目前地點
-                            (定位與密碼)</label>
-                        <select id="location-selector" onchange="changeLocation()"
-                            class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
-                            <option value="">載入中...</option>
-                        </select>
+                <!-- 展開的設定選單 -->
+                <div id="config-drawer"
+                    class="hidden-custom bg-white/95 backdrop-blur-xl rounded-[2rem] shadow-2xl p-6 border-2 border-white animate-in slide-in-from-top duration-300">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="font-black text-slate-800">簽到設定</h2>
+                        <button onclick="unlockAdmin()" id="admin-btn"
+                            class="p-2 bg-slate-100 rounded-xl text-slate-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2.5">
+                                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                        </button>
                     </div>
-
-                    <div>
-                        <label
-                            class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest text-green-600">2.
-                            選擇簽到班級 (比對名冊)</label>
-                        <select id="qr-class-selector" onchange="changeQRClass()"
-                            class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:border-green-500 appearance-none shadow-inner">
-                            <option value="">載入中...</option>
-                        </select>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">1. 選擇地點</label>
+                            <select id="location-selector" onchange="changeLocation()"
+                                class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold appearance-none outline-none">
+                                <option value="">載入中...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">2. 選擇班級</label>
+                            <select id="qr-class-selector" onchange="changeQRClass()"
+                                class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 font-bold appearance-none outline-none">
+                                <option value="">載入中...</option>
+                            </select>
+                        </div>
+                        <button onclick="toggleConfigDrawer()"
+                            class="w-full py-3 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-200">完成設定</button>
                     </div>
                 </div>
             </div>
 
-            <div id="reader-container"
-                class="relative bg-white rounded-[2rem] shadow-2xl p-2 mb-6 ring-4 ring-white transition-all overflow-hidden">
-                <video id="video-preview" class="w-full rounded-[1.8rem]"></video>
+            <!-- 背景影片預覽 -->
+            <div class="absolute inset-0 z-0">
+                <video id="video-preview" class="w-full h-full object-cover" playsinline></video>
                 <div id="admin-badge"
-                    class="hidden absolute top-4 right-4 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-lg z-10 shadow-lg animate-bounce">
-                    管理員：免定位模式</div>
+                    class="hidden absolute top-24 right-6 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-lg z-10 shadow-lg animate-bounce">
+                    管理員模式</div>
             </div>
 
-            <div id="status-card"
-                class="hidden animate-in zoom-in duration-200 mb-6 border-b-8 rounded-[2.5rem] overflow-hidden shadow-2xl transition-all">
+            <!-- 懸浮狀態卡片 -->
+            <div id="status-card" class="hidden floating-status animate-in zoom-in duration-300">
                 <div id="card-loading"
-                    class="hidden bg-blue-600 text-white p-10 flex flex-col items-center gap-3 text-center">
+                    class="bg-blue-600/90 backdrop-blur-md text-white p-8 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-3 text-center border-2 border-white/30">
                     <div class="animate-spin h-10 w-10 border-4 border-white/30 border-t-white rounded-full"></div>
-                    <p class="text-xl font-black tracking-widest uppercase">驗證中...</p>
+                    <p class="text-xl font-black tracking-widest uppercase">簽到中...</p>
                 </div>
                 <div id="card-success"
-                    class="hidden bg-green-600 text-white p-10 flex flex-col items-center gap-4 text-center">
+                    class="hidden bg-green-600/90 backdrop-blur-md text-white p-8 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4 text-center border-4 border-white">
                     <span id="display-seat"
-                        class="bg-white text-green-600 font-black text-xl px-4 py-1 rounded-xl shadow-lg">座號 --</span>
-                    <div>
-                        <p id="display-prayer" class="text-6xl font-black mb-1 leading-none text-white">姓名</p>
-                        <p id="display-temple" class="text-lg opacity-90 font-bold text-white">單位</p>
-                    </div>
+                        class="bg-white text-green-600 font-black text-base px-4 py-1 rounded-xl shadow-lg">座號 --</span>
+                    <p id="display-prayer" class="text-5xl font-black mb-1 leading-none text-white">姓名</p>
+                    <p id="display-temple" class="text-sm opacity-90 font-bold text-white uppercase tracking-widest">單位
+                    </p>
                 </div>
                 <div id="card-error"
-                    class="hidden bg-red-600 text-white p-10 flex flex-col items-center gap-3 text-center">
-                    <p id="error-message" class="text-2xl font-black leading-tight">驗證失敗</p>
-                    <p id="scanned-id-hint" class="text-xs font-mono opacity-70 break-all">ID: --</p>
+                    class="hidden bg-red-600/90 backdrop-blur-md text-white p-8 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-3 text-center border-2 border-white/30">
+                    <p id="error-message" class="text-xl font-black leading-tight">驗證失敗</p>
+                    <p id="scanned-id-hint" class="text-[10px] font-mono opacity-70 break-all">ID: --</p>
                 </div>
             </div>
 
-            <div class="bg-slate-800 rounded-2xl p-4 shadow-inner">
-                <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 text-white">
-                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">系統日誌</span>
-                    <button onclick="clearLog()" class="text-[10px] text-slate-500 underline font-bold">清除</button>
-                </div>
-                <div id="debug-log" class="text-blue-200 h-24 overflow-y-auto font-mono text-xs"></div>
+            <!-- 底部日誌 (可視化診斷) -->
+            <div class="absolute bottom-6 left-6 right-6 z-10 opacity-30 pointer-events-none origin-bottom scale-75">
+                <div id="debug-log" class="text-white h-16 overflow-hidden font-mono text-[10px] space-y-1"></div>
             </div>
         </div>
     </div>
@@ -640,6 +654,7 @@
                 currentLoc = allConfig.locations[index];
                 resetAdminStatus();
                 log(`📍 地點：${currentLoc.name}`);
+                updateFloatingInfo();
             }
         }
 
@@ -648,18 +663,31 @@
             if (index !== "" && allConfig.classes[index]) {
                 qrCurrentClass = allConfig.classes[index];
                 log(`📑 班級：${qrCurrentClass}`);
+                updateFloatingInfo();
             }
+        }
+
+        function updateFloatingInfo() {
+            const text = document.getElementById('floating-info-text');
+            if (currentLoc && qrCurrentClass) {
+                text.innerText = `${currentLoc.name} | ${qrCurrentClass}`;
+            }
+        }
+
+        function toggleConfigDrawer() {
+            const drawer = document.getElementById('config-drawer');
+            drawer.classList.toggle('hidden-custom');
         }
 
         function unlockAdmin() {
             if (!currentLoc) { alert("請先選擇地點"); return; }
-            if (isAdminMode) { resetAdminStatus(); log("🔒 關閉免定位模式"); return; }
-            const input = prompt(`請輸入 ${currentLoc.name} 的管理員密碼：`);
+            if (isAdminMode) { resetAdminStatus(); log("🔒 關閉模式"); return; }
+            const input = prompt(`輸入密碼：`);
             if (input === String(currentLoc.password)) {
                 isAdminMode = true;
                 document.getElementById('admin-badge').classList.remove('hidden');
                 document.getElementById('admin-btn').classList.add('admin-active');
-                log("🔓 免定位模式開啟", "text-amber-400 font-bold");
+                log("🔓 免定位模式開啟");
             } else if (input !== null) { alert("密碼錯誤"); }
         }
 
@@ -670,16 +698,14 @@
             document.getElementById('admin-btn').classList.remove('admin-active');
         }
 
-        function log(msg, color = "text-blue-200") {
+        function log(msg, color = "text-white") {
             const debugLog = document.getElementById('debug-log');
             const time = new Date().toLocaleTimeString('zh-TW', { hour12: false });
             const div = document.createElement('div');
-            div.className = `mb-1 ${color}`;
-            div.innerHTML = `<span class="opacity-40 text-white">[${time}]</span> ${msg}`;
-            debugLog.appendChild(div);
-            debugLog.scrollTop = debugLog.scrollHeight;
+            div.className = `${color}`;
+            div.innerHTML = `<span class="opacity-50">[${time}]</span> ${msg}`;
+            debugLog.prepend(div);
         }
-        function clearLog() { document.getElementById('debug-log').innerHTML = ""; }
 
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371e3;
@@ -690,18 +716,15 @@
         }
 
         const codeReader = new ZXing.BrowserQRCodeReader();
+        let activeStream = null;
 
         async function initScanner() {
-            if (html5QrcodeScanner) return;
-
-            log("📷 正在啟動高品質掃描器...");
+            if (activeStream) return;
+            log("� 高性能全螢幕掃描啟動...");
             try {
                 const videoInputDevices = await codeReader.listVideoInputDevices();
-                if (videoInputDevices.length === 0) {
-                    throw new Error("找不到相機裝置");
-                }
+                if (videoInputDevices.length === 0) throw new Error("無相機");
 
-                // 優先選擇後置鏡頭
                 let selectedDeviceId = videoInputDevices[0].deviceId;
                 for (const device of videoInputDevices) {
                     if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
@@ -710,32 +733,38 @@
                     }
                 }
 
-                // 設定高品質參數
                 const constraints = {
                     video: {
                         deviceId: { exact: selectedDeviceId },
                         width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        facingMode: "environment",
-                        focusMode: "continuous" // 部分安卓支援
+                        height: { ideal: 1080 }
                     }
                 };
 
-                html5QrcodeScanner = true; // 標記已啟動
-                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video-preview', async (result, err) => {
-                    if (result) {
-                        onScanSuccess(result.getText());
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                activeStream = stream;
+
+                const videoElement = document.getElementById('video-preview');
+                videoElement.srcObject = stream;
+                await videoElement.play();
+
+                // 預設 2x 變焦 (自動強化距離)
+                try {
+                    const track = stream.getVideoTracks()[0];
+                    const caps = track.getCapabilities();
+                    if (caps.zoom) {
+                        const targetZoom = Math.min(2.0, caps.zoom.max);
+                        await track.applyConstraints({ advanced: [{ zoom: targetZoom }] });
+                        log(`🔍 已自動優化焦距 (${targetZoom}x)`);
                     }
-                    if (err && !(err instanceof ZXing.NotFoundException)) {
-                        // 忽略 NotFound 異常（正在掃描中）
-                        // console.error(err);
-                    }
+                } catch (e) { console.warn("Zoom error", e); }
+
+                codeReader.decodeFromStream(stream, 'video-preview', (result) => {
+                    if (result) onScanSuccess(result.getText());
                 });
 
-                log("✅ 掃描器啟動成功 (1080p)", "text-green-400");
             } catch (err) {
-                log(`❌ 相機啟動失敗: ${err.message}`, "text-red-400");
-                html5QrcodeScanner = null;
+                log(`❌ 啟動失敗: ${err.message}`, "text-red-400");
             }
         }
 
@@ -760,23 +789,21 @@
 
             try {
                 if (!isAdminMode && !verifiedCoords) {
-                    log("📍 執行定位驗證...");
+                    log("📍 座標驗證中...");
                     const pos = await new Promise((res, rej) => {
-                        navigator.geolocation.getCurrentPosition(p => res(p.coords), e => rej(new Error("定位失敗：" + e.message)), { timeout: 8000 });
+                        navigator.geolocation.getCurrentPosition(p => res(p.coords), e => rej(new Error("定位失敗")), { timeout: 8000 });
                     });
                     const dist = getDistance(pos.latitude, pos.longitude, currentLoc.lat, currentLoc.lng);
-                    if (dist > currentLoc.limit) throw new Error(`超出範圍 (${Math.round(dist)}m)`);
+                    if (dist > currentLoc.limit) throw new Error(`超出座標限定範圍`);
                     verifiedCoords = pos;
-                    log("✅ 定位驗證通過");
                 }
 
-                log(`🚀 發送簽到：${memberid}`);
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
                     body: JSON.stringify({
                         action: "signin", memberId: memberid,
                         locationName: currentLoc.name, className: qrCurrentClass,
-                        status: isAdminMode ? "免定位模式" : "定位驗證成功"
+                        status: isAdminMode ? "管理員簽到" : "簽到成功"
                     })
                 });
                 const result = await response.json();
@@ -795,7 +822,7 @@
                 document.getElementById('card-error').classList.remove('hidden');
                 document.getElementById('error-message').innerText = err.message;
                 document.getElementById('scanned-id-hint').innerText = "ID: " + memberid;
-                log(`❌ 失敗: ${err.message}`, "text-red-400");
+                log(`❌ 簽到失敗: ${err.message}`, "text-red-400");
                 verifiedCoords = null;
                 setTimeout(() => { isProcessingScanner = false; statusCard.classList.add('hidden'); }, 3000);
             }
