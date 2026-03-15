@@ -7,7 +7,8 @@
     <title>崇正班期點名整合系統</title>
     <!-- 引入支援庫 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://unpkg.com/pako@2.1.0/dist/pako.min.js"></script> <!-- Optional but good for complex codes -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
         /* 繼承原有的手動表單樣式 */
         body {
@@ -252,8 +253,8 @@
             </div>
 
             <div id="reader-container"
-                class="relative bg-white rounded-[2rem] shadow-2xl p-2 mb-6 ring-4 ring-white transition-all">
-                <div id="reader" class="w-full"></div>
+                class="relative bg-white rounded-[2rem] shadow-2xl p-2 mb-6 ring-4 ring-white transition-all overflow-hidden">
+                <video id="video-preview" class="w-full rounded-[1.8rem]"></video>
                 <div id="admin-badge"
                     class="hidden absolute top-4 right-4 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-lg z-10 shadow-lg animate-bounce">
                     管理員：免定位模式</div>
@@ -654,13 +655,54 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         }
 
-        function initScanner() {
+        const codeReader = new ZXing.BrowserQRCodeReader();
+
+        async function initScanner() {
             if (html5QrcodeScanner) return;
-            html5QrcodeScanner = new Html5QrcodeScanner("reader", {
-                fps: 20, qrbox: 250,
-                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-            }, false);
-            html5QrcodeScanner.render(onScanSuccess, () => { });
+
+            log("📷 正在啟動高品質掃描器...");
+            try {
+                const videoInputDevices = await codeReader.listVideoInputDevices();
+                if (videoInputDevices.length === 0) {
+                    throw new Error("找不到相機裝置");
+                }
+
+                // 優先選擇後置鏡頭
+                let selectedDeviceId = videoInputDevices[0].deviceId;
+                for (const device of videoInputDevices) {
+                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
+                        selectedDeviceId = device.deviceId;
+                        break;
+                    }
+                }
+
+                // 設定高品質參數
+                const constraints = {
+                    video: {
+                        deviceId: { exact: selectedDeviceId },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        facingMode: "environment",
+                        focusMode: "continuous" // 部分安卓支援
+                    }
+                };
+
+                html5QrcodeScanner = true; // 標記已啟動
+                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video-preview', async (result, err) => {
+                    if (result) {
+                        onScanSuccess(result.getText());
+                    }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        // 忽略 NotFound 異常（正在掃描中）
+                        // console.error(err);
+                    }
+                });
+
+                log("✅ 掃描器啟動成功 (1080p)", "text-green-400");
+            } catch (err) {
+                log(`❌ 相機啟動失敗: ${err.message}`, "text-red-400");
+                html5QrcodeScanner = null;
+            }
         }
 
         async function onScanSuccess(decodedText) {
