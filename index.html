@@ -196,10 +196,27 @@
             </div>
 
             <div id="main-content" class="hidden-custom">
-                <button id="form-back-btn" class="back-btn hidden-custom">← 返回</button>
-                <div id="loader" class="hidden-custom text-center py-5">載入中...</div>
-                <div id="area-grid" class="grid-custom hidden-custom"></div>
-                <div id="sub-area-grid" class="grid-custom hidden-custom"></div>
+                <button id="form-back-btn" class="back-btn hidden-custom">← 返回班級選擇</button>
+
+                <!-- 下拉式選單分組 -->
+                <div class="space-y-4 mb-6" id="dropdown-controls">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase ml-1 block mb-1">1. 選擇大區域</label>
+                        <select id="main-area-select" onchange="onMainAreaChange()"
+                            class="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
+                            <option value="">-- 請選擇大區域 --</option>
+                        </select>
+                    </div>
+                    <div id="sub-area-container" class="hidden-custom">
+                        <label class="text-xs font-bold text-gray-500 uppercase ml-1 block mb-1">2. 選擇細分單位</label>
+                        <select id="sub-area-select" onchange="onSubAreaChange()"
+                            class="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-700 outline-none focus:border-blue-500 appearance-none shadow-inner">
+                            <option value="">-- 請選擇單位 --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="loader" class="hidden-custom text-center py-5 italic text-gray-500">載入中...</div>
                 <div id="name-list" class="hidden-custom"></div>
             </div>
         </div>
@@ -347,32 +364,37 @@
                 qrView.classList.add('hidden-custom');
                 navForm.classList.add('active');
                 navQR.classList.remove('active');
-                // 暫停掃描以節省電力/資源
                 if (html5QrcodeScanner) {
                     html5QrcodeScanner.clear().catch(err => console.error("Scanner clear error", err));
                     html5QrcodeScanner = null;
                 }
             } else {
-                formView.classList.add('hidden-custom');
-                qrView.classList.remove('hidden-custom');
-                navForm.classList.remove('active');
-                navQR.classList.add('active');
-                // 啟動掃描器
-                initScanner();
+                // QR Code 簽到前先檢查密碼
+                const pass = prompt("請輸入訪問密碼以啟用 QR Code 簽到：");
+                // 檢查是否符合任一地點的密碼，或預設 1234
+                const isValid = allConfig.locations.some(l => String(l.password) === pass) || pass === "1234";
+
+                if (isValid) {
+                    formView.classList.add('hidden-custom');
+                    qrView.classList.remove('hidden-custom');
+                    navForm.classList.remove('active');
+                    navQR.classList.add('active');
+                    initScanner();
+                } else if (pass !== null) {
+                    alert("密碼錯誤，無法開啟簽到功能。");
+                }
             }
         }
 
         // --- [ 初始化 ] ---
         window.onload = async function () {
-            // 首先加載手動點名的班級清單
             try {
                 const res = await fetch(`${GAS_URL}?action=init`);
                 const result = await res.json();
 
                 if (result.status === "success") {
-                    allConfig = result.data; // 共用配置
+                    allConfig = result.data;
 
-                    // 渲染手動點名班級
                     const grid = document.getElementById('class-select-grid');
                     const hint = document.getElementById('class-hint');
                     hint.innerText = "請選擇點名班級：";
@@ -384,7 +406,6 @@
                         grid.appendChild(btn);
                     });
 
-                    // 初始化 QR Code 選單
                     updateQRSelectors();
                 } else {
                     document.getElementById('class-hint').innerText = "載入失敗：" + (result.message || "未知原因");
@@ -394,12 +415,13 @@
             }
         };
 
-        // --- [ 手動點名功能 ] ---
+        // --- [ 手動點名功能 (已更新為下拉式選單) ] ---
         async function selectClass(className) {
             selectedClass = className;
             document.getElementById('class-select-grid').classList.add('hidden-custom');
             document.getElementById('main-content').classList.remove('hidden-custom');
             document.getElementById('loader').classList.remove('hidden-custom');
+            document.getElementById('form-title').innerText = `📋 ${selectedClass} - 下拉選擇`;
             await loadFormData();
         }
 
@@ -410,7 +432,7 @@
                 if (result.status === "success") {
                     allData = result.data;
                     document.getElementById('loader').classList.add('hidden-custom');
-                    showMainAreas();
+                    initDropdowns();
                 } else {
                     document.getElementById('loader').innerText = "讀取失敗：" + result.message;
                 }
@@ -438,15 +460,9 @@
             return "其他";
         }
 
-        function showMainAreas() {
-            const areaGrid = document.getElementById('area-grid');
-            const subGrid = document.getElementById('sub-area-grid');
-            const nameList = document.getElementById('name-list');
-            const backBtn = document.getElementById('form-back-btn');
-            const title = document.getElementById('form-title');
-
-            title.innerText = `📋 ${selectedClass} - 分類`;
-            areaGrid.innerHTML = '';
+        function initDropdowns() {
+            const mainSelect = document.getElementById('main-area-select');
+            mainSelect.innerHTML = '<option value="">-- 請選擇大區域 --</option>';
 
             const displayGroups = AREA_GROUPS.map(g => g.name);
             if (allData.some(item => getParentGroupName(item.area) === "其他")) displayGroups.push("其他");
@@ -454,65 +470,65 @@
             displayGroups.forEach(groupName => {
                 const count = allData.filter(item => getParentGroupName(item.area) === groupName).length;
                 if (count > 0) {
-                    const btn = document.createElement('button');
-                    btn.className = 'area-btn';
-                    btn.innerHTML = `<span>${groupName}</span><small>(${count}人)</small>`;
-                    btn.onclick = () => showSubAreas(groupName);
-                    areaGrid.appendChild(btn);
+                    const opt = document.createElement('option');
+                    opt.value = groupName;
+                    opt.innerText = `${groupName} (${count}人)`;
+                    mainSelect.appendChild(opt);
                 }
             });
 
-            areaGrid.classList.remove('hidden-custom');
-            subGrid.classList.add('hidden-custom');
-            nameList.classList.add('hidden-custom');
-            backBtn.classList.remove('hidden-custom');
-            backBtn.onclick = () => {
+            document.getElementById('dropdown-controls').classList.remove('hidden-custom');
+            document.getElementById('form-back-btn').classList.remove('hidden-custom');
+            document.getElementById('form-back-btn').onclick = () => {
                 document.getElementById('main-content').classList.add('hidden-custom');
                 document.getElementById('class-select-grid').classList.remove('hidden-custom');
                 document.getElementById('form-title').innerText = "🎓 崇正點名系統";
+                document.getElementById('name-list').classList.add('hidden-custom');
+                document.getElementById('sub-area-container').classList.add('hidden-custom');
                 allData = [];
             };
         }
 
-        function showSubAreas(parentName) {
-            const areaGrid = document.getElementById('area-grid');
-            const subGrid = document.getElementById('sub-area-grid');
+        function onMainAreaChange() {
+            const mainArea = document.getElementById('main-area-select').value;
+            const subContainer = document.getElementById('sub-area-container');
+            const subSelect = document.getElementById('sub-area-select');
             const nameList = document.getElementById('name-list');
-            const backBtn = document.getElementById('form-back-btn');
-            const title = document.getElementById('form-title');
 
-            title.innerText = `📂 ${parentName}`;
-            subGrid.innerHTML = '';
+            nameList.classList.add('hidden-custom');
 
-            const membersInParent = allData.filter(item => getParentGroupName(item.area) === parentName);
+            if (!mainArea) {
+                subContainer.classList.add('hidden-custom');
+                return;
+            }
+
+            const membersInParent = allData.filter(item => getParentGroupName(item.area) === mainArea);
             const subAreas = [...new Set(membersInParent.map(item => item.area))].sort();
 
+            subSelect.innerHTML = '<option value="">-- 請選擇單位 --</option>';
             subAreas.forEach(subName => {
                 const count = membersInParent.filter(item => item.area === subName).length;
-                const btn = document.createElement('button');
-                btn.className = 'area-btn sub-area-btn';
-                btn.innerHTML = `<span>${subName || "未分類"}</span><small>(${count}人)</small>`;
-                btn.onclick = () => showNamesByFinalArea(subName, parentName);
-                subGrid.appendChild(btn);
+                const opt = document.createElement('option');
+                opt.value = subName;
+                opt.innerText = `${subName || '未分類'} (${count}人)`;
+                subSelect.appendChild(opt);
             });
 
-            areaGrid.classList.add('hidden-custom');
-            subGrid.classList.remove('hidden-custom');
-            nameList.classList.add('hidden-custom');
-            backBtn.onclick = showMainAreas;
+            subContainer.classList.remove('hidden-custom');
         }
 
-        function showNamesByFinalArea(finalArea, parentName) {
-            const subGrid = document.getElementById('sub-area-grid');
+        function onSubAreaChange() {
+            const subArea = document.getElementById('sub-area-select').value;
             const nameList = document.getElementById('name-list');
-            const backBtn = document.getElementById('form-back-btn');
-            const title = document.getElementById('form-title');
 
-            title.innerText = `📍 ${finalArea || "未分類"}`;
-            renderList(allData.filter(item => item.area === finalArea));
-            subGrid.classList.add('hidden-custom');
+            if (!subArea) {
+                nameList.classList.add('hidden-custom');
+                return;
+            }
+
+            const filtered = allData.filter(item => item.area === subArea);
+            renderList(filtered);
             nameList.classList.remove('hidden-custom');
-            backBtn.onclick = () => showSubAreas(parentName);
         }
 
         function renderList(items) {
