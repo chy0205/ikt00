@@ -378,12 +378,13 @@
         let allConfig = { locations: [], classes: [] };
         let currentLoc = null;
         let qrCurrentClass = null;
-        let verifiedCoords = null;
         let isAdminMode = false;
         let isProcessingScanner = false;
         let lastId = "";
         let lastTime = 0;
         let html5QrcodeScanner = null;
+        let lastKnownCoords = null; // 快取位置
+        let lastCoordsTime = 0;     // 快取時間
 
         // --- [ 頁面切換控制 ] ---
         function switchView(view) {
@@ -693,7 +694,8 @@
 
         function resetAdminStatus() {
             isAdminMode = false;
-            verifiedCoords = null;
+            lastKnownCoords = null;
+            lastCoordsTime = 0;
             document.getElementById('admin-badge').classList.add('hidden');
             document.getElementById('admin-btn').classList.remove('admin-active');
         }
@@ -720,7 +722,10 @@
 
         async function initScanner() {
             if (activeStream) return;
-            log("� 高性能全螢幕掃描啟動...");
+            log("🚀 高性能全螢幕掃描啟動...");
+
+            // 啟動背景預先定位
+            startBackgroundLocation();
             try {
                 const videoInputDevices = await codeReader.listVideoInputDevices();
                 if (videoInputDevices.length === 0) throw new Error("無相機");
@@ -776,6 +781,29 @@
             }
         }
 
+        /**
+         * 背景預先獲取定位
+         */
+        async function startBackgroundLocation() {
+            if (isAdminMode) return;
+
+            // 如果已有 1 分鐘內的座標，就不重複獲取
+            if (lastKnownCoords && (Date.now() - lastCoordsTime < 60000)) return;
+
+            log("📍 背景預先獲取定位中...");
+            navigator.geolocation.getCurrentPosition(
+                (p) => {
+                    lastKnownCoords = p.coords;
+                    lastCoordsTime = Date.now();
+                    log("✅ 定位已就緒");
+                },
+                (e) => {
+                    log("⚠️ 背景定位失敗，待掃描時重試", "text-amber-400");
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+            );
+        }
+
         async function onScanSuccess(decodedText) {
             if (isProcessingScanner || !currentLoc || !qrCurrentClass) return;
             let memberid = "";
@@ -796,14 +824,30 @@
             document.getElementById('card-error').classList.add('hidden');
 
             try {
-                if (!isAdminMode && !verifiedCoords) {
-                    log("📍 座標驗證中...");
+                // 優先使用 60 秒內的快取定位
+                let currentCoords = null;
+                if (isAdminMode) {
+                    // 管理員模式忽略定位
+                } else if (lastKnownCoords && (Date.now() - lastCoordsTime < 60000)) {
+                    currentCoords = lastKnownCoords;
+                    log("📍 使用快取定位");
+                } else {
+                    log("📍 重新獲取即時定位...");
                     const pos = await new Promise((res, rej) => {
-                        navigator.geolocation.getCurrentPosition(p => res(p.coords), e => rej(new Error("定位失敗")), { timeout: 8000 });
+                        navigator.geolocation.getCurrentPosition(
+                            p => res(p.coords),
+                            e => rej(new Error("定位失敗：" + e.message)),
+                            { enableHighAccuracy: true, timeout: 5000 }
+                        );
                     });
-                    const dist = getDistance(pos.latitude, pos.longitude, currentLoc.lat, currentLoc.lng);
-                    if (dist > currentLoc.limit) throw new Error(`超出座標限定範圍`);
-                    verifiedCoords = pos;
+                    lastKnownCoords = pos;
+                    lastCoordsTime = Date.now();
+                    currentCoords = pos;
+                }
+
+                if (!isAdminMode) {
+                    const dist = getDistance(currentCoords.latitude, currentCoords.longitude, currentLoc.lat, currentLoc.lng);
+                    if (dist > currentLoc.limit) throw new Error(`超出範圍 (${Math.round(dist)}m > ${currentLoc.limit}m)`);
                 }
 
                 const response = await fetch(GAS_URL, {
@@ -831,7 +875,8 @@
                 document.getElementById('error-message').innerText = err.message;
                 document.getElementById('scanned-id-hint').innerText = "ID: " + memberid;
                 log(`❌ 簽到失敗: ${err.message}`, "text-red-400");
-                verifiedCoords = null;
+                lastKnownCoords = null;
+                lastCoordsTime = 0;
                 setTimeout(() => { isProcessingScanner = false; statusCard.classList.add('hidden'); }, 3000);
             }
         }
